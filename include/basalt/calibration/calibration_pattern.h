@@ -42,19 +42,18 @@ namespace basalt {
 class CalibrationPattern {
 public:
   CalibrationPattern(const std::string &config_path);
+  ~CalibrationPattern();
 
   Eigen::aligned_vector<Eigen::Vector4d> corner_pos_3d;
   Eigen::aligned_vector<Eigen::Vector4d> vignette_pos_3d;
 
   // TODO
-  inline int getTagCols() const { return tagCols; }
-  inline int getTagRows() const { return tagRows; }
+  int getTagCols() const;
+  int getTagRows() const;
 
  private:
-  int tagCols;        // number of apriltags
-  int tagRows;        // number of apriltags
-  double tagSize;     // size of apriltag, edge to edge [m]
-  double tagSpacing;  // ratio of space between tags to tagSize
+  struct Impl;
+  std::unique_ptr<Impl> pImpl;
 };
 
 }  // namespace basalt
