@@ -63,8 +63,8 @@ struct LinearizePosesOpt : public LinearizeBase<Scalar> {
   typedef Eigen::Matrix<Scalar, Eigen::Dynamic, 1> VectorX;
   typedef Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> MatrixX;
 
-  typedef typename Eigen::aligned_vector<AprilgridCornersData>::const_iterator
-      AprilgridCornersDataIter;
+  typedef typename Eigen::aligned_vector<CalibrationPatternCornersData>::const_iterator
+      CalibrationPatternCornersDataIter;
 
   typedef typename LinearizeBase<Scalar>::CalibCommonData CalibCommonData;
 
@@ -97,8 +97,8 @@ struct LinearizePosesOpt : public LinearizeBase<Scalar> {
     num_points = 0;
   }
 
-  void operator()(const tbb::blocked_range<AprilgridCornersDataIter>& r) {
-    for (const AprilgridCornersData& acd : r) {
+  void operator()(const tbb::blocked_range<CalibrationPatternCornersDataIter>& r) {
+    for (const CalibrationPatternCornersData& acd : r) {
       std::visit(
           [&](const auto& cam) {
             constexpr int INTRINSICS_SIZE =
@@ -192,8 +192,8 @@ struct ComputeErrorPosesOpt : public LinearizeBase<Scalar> {
   typedef Eigen::Matrix<Scalar, Eigen::Dynamic, 1> VectorX;
   typedef Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> MatrixX;
 
-  typedef typename Eigen::aligned_vector<AprilgridCornersData>::const_iterator
-      AprilgridCornersDataIter;
+  typedef typename Eigen::aligned_vector<CalibrationPatternCornersData>::const_iterator
+      CalibrationPatternCornersDataIter;
 
   typedef typename LinearizeBase<Scalar>::CalibCommonData CalibCommonData;
 
@@ -224,8 +224,8 @@ struct ComputeErrorPosesOpt : public LinearizeBase<Scalar> {
     num_points = 0;
   }
 
-  void operator()(const tbb::blocked_range<AprilgridCornersDataIter>& r) {
-    for (const AprilgridCornersData& acd : r) {
+  void operator()(const tbb::blocked_range<CalibrationPatternCornersDataIter>& r) {
+    for (const CalibrationPatternCornersData& acd : r) {
       std::visit(
           [&](const auto& cam) {
             SE3 T_w_i = timestam_to_pose.at(acd.timestamp_ns);

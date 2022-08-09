@@ -45,13 +45,13 @@ namespace basalt {
 
 CamImuCalib::CamImuCalib(const std::string &dataset_path,
                          const std::string &dataset_type,
-                         const std::string &aprilgrid_path,
+                         const std::string &calib_pattern_path,
                          const std::string &cache_path,
                          const std::string &cache_dataset_name, int skip_images,
                          const std::vector<double> &imu_noise, bool show_gui)
     : dataset_path(dataset_path),
       dataset_type(dataset_type),
-      april_grid(aprilgrid_path),
+      calib_pattern(calib_pattern_path),
       cache_path(ensure_trailing_slash(cache_path)),
       cache_dataset_name(cache_dataset_name),
       skip_images(skip_images),
@@ -224,7 +224,7 @@ void CamImuCalib::computeProjections() {
       Eigen::Matrix4d T_c_w = T_c_w_.matrix();
 
       calib_opt->calib->intrinsics[i].project(
-          april_grid.aprilgrid_corner_pos_3d, T_c_w, rc.corners_proj,
+          calib_pattern.corner_pos_3d, T_c_w, rc.corners_proj,
           rc.corners_proj_success);
 
       reprojected_corners.emplace(tcid, rc);
@@ -241,7 +241,7 @@ void CamImuCalib::detectCorners() {
   processing_thread.reset(new std::thread([this]() {
     std::cout << "Started detecting corners" << std::endl;
 
-    CalibHelper::detectCorners(this->vio_dataset, this->april_grid,
+    CalibHelper::detectCorners(this->vio_dataset, this->calib_pattern,
                                this->calib_corners,
                                this->calib_corners_rejected);
 
@@ -286,7 +286,7 @@ void CamImuCalib::initCamPoses() {
     std::cout << "Started initial camera pose computation " << std::endl;
 
     CalibHelper::initCamPoses(calib_opt->calib,
-                              april_grid.aprilgrid_corner_pos_3d,
+                              calib_pattern.corner_pos_3d,
                               this->calib_corners, this->calib_init_poses);
 
     std::string path = cache_path + cache_dataset_name + "_init_poses.cereal";
@@ -408,7 +408,7 @@ void CamImuCalib::initOptimization() {
     return;
   }
 
-  calib_opt->setAprilgridCorners3d(april_grid.aprilgrid_corner_pos_3d);
+  calib_opt->setCalibrationPatternCorners3d(calib_pattern.corner_pos_3d);
 
   for (size_t i = 0; i < vio_dataset->get_accel_data().size(); i++) {
     const basalt::AccelData &ad = vio_dataset->get_accel_data()[i];
@@ -426,7 +426,7 @@ void CamImuCalib::initOptimization() {
 
   for (const auto &kv : calib_corners) {
     if (invalid_timestamps.find(kv.first.frame_id) == invalid_timestamps.end())
-      calib_opt->addAprilgridMeasurement(kv.first.frame_id, kv.first.cam_id,
+      calib_opt->addCalibrationPatternMeasurement(kv.first.frame_id, kv.first.cam_id,
                                          kv.second.corners,
                                          kv.second.corner_ids);
   }

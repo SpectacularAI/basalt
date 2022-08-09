@@ -42,7 +42,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 int main(int argc, char **argv) {
   std::string dataset_path;
   std::string dataset_type;
-  std::string aprilgrid_path;
+  std::string calib_pattern_path;
   std::string result_path;
   std::string cache_dataset_name = "calib-cam-imu";
   int skip_images = 1;
@@ -60,8 +60,8 @@ int main(int argc, char **argv) {
   app.add_option("--dataset-type", dataset_type, "Dataset type (euroc, bag)")
       ->required();
 
-  app.add_option("--aprilgrid", aprilgrid_path,
-                 "Path to Aprilgrid config file)")
+  app.add_option("--aprilgrid", calib_pattern_path, // TODO: rename / add alias
+                 "Path to calibration pattern (e.g., Aprilgrid) config file)")
       ->required();
 
   app.add_option("--gyro-noise-std", gyro_noise_std, "Gyroscope noise std");
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
   }
 
   basalt::CamImuCalib cv(
-      dataset_path, dataset_type, aprilgrid_path, result_path,
+      dataset_path, dataset_type, calib_pattern_path, result_path,
       cache_dataset_name, skip_images,
       {accel_noise_std, gyro_noise_std, accel_bias_std, gyro_bias_std});
 

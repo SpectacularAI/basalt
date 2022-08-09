@@ -34,7 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #pragma once
 
-#include <basalt/calibration/aprilgrid.h>
+#include <basalt/calibration/calibration_pattern.h>
 #include <basalt/io/dataset_io.h>
 #include <basalt/utils/common_types.h>
 #include <basalt/calibration/calibration.hpp>
@@ -78,23 +78,23 @@ using CalibInitPoseMap =
 class CalibHelper {
  public:
   static void detectCorners(const VioDatasetPtr& vio_data,
-                            const AprilGrid& april_grid,
+                            const CalibrationPattern& calib_pattern,
                             CalibCornerMap& calib_corners,
                             CalibCornerMap& calib_corners_rejected);
 
   static void initCamPoses(
       const Calibration<double>::Ptr& calib,
-      const Eigen::aligned_vector<Eigen::Vector4d>& aprilgrid_corner_pos_3d,
+      const Eigen::aligned_vector<Eigen::Vector4d>& corner_pos_3d,
       CalibCornerMap& calib_corners, CalibInitPoseMap& calib_init_poses);
 
   static bool initializeIntrinsics(
       const Eigen::aligned_vector<Eigen::Vector2d>& corners,
-      const std::vector<int>& corner_ids, const AprilGrid& aprilgrid, int cols,
+      const std::vector<int>& corner_ids, const CalibrationPattern& calib_pattern, int cols,
       int rows, Eigen::Vector4d& init_intr);
 
   static bool initializeIntrinsicsPinhole(
       const std::vector<CalibCornerData*> pinhole_corners,
-      const AprilGrid& aprilgrid, int cols, int rows,
+      const CalibrationPattern& calib_pattern, int cols, int rows,
       Eigen::Vector4d& init_intr);
 
  private:
@@ -106,14 +106,14 @@ class CalibHelper {
 
   static void computeInitialPose(
       const Calibration<double>::Ptr& calib, size_t cam_id,
-      const Eigen::aligned_vector<Eigen::Vector4d>& aprilgrid_corner_pos_3d,
+      const Eigen::aligned_vector<Eigen::Vector4d>& corner_pos_3d,
       const basalt::CalibCornerData& cd, basalt::CalibInitPoseData& cp);
 
   static size_t computeReprojectionError(
       const UnifiedCamera<double>& cam_calib,
       const Eigen::aligned_vector<Eigen::Vector2d>& corners,
       const std::vector<int>& corner_ids,
-      const Eigen::aligned_vector<Eigen::Vector4d>& aprilgrid_corner_pos_3d,
+      const Eigen::aligned_vector<Eigen::Vector4d>& corner_pos_3d,
       const Sophus::SE3d& T_target_camera, double& error);
 };
 

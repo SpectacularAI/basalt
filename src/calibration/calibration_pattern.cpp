@@ -35,13 +35,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <fstream>
 
-#include <basalt/calibration/aprilgrid.h>
+#include <basalt/calibration/calibration_pattern.h>
 
 #include <cereal/archives/json.hpp>
 
 namespace basalt {
 
-AprilGrid::AprilGrid(const std::string &config_path) {
+CalibrationPattern::CalibrationPattern(const std::string &config_path) {
   std::ifstream is(config_path);
   if (is.is_open()) {
     cereal::JSONInputArchive ar(is);
@@ -50,7 +50,7 @@ AprilGrid::AprilGrid(const std::string &config_path) {
     ar(cereal::make_nvp("tagSize", tagSize));
     ar(cereal::make_nvp("tagSpacing", tagSpacing));
   } else {
-    std::cerr << "Could not open aprilgrid configuration: " << config_path
+    std::cerr << "Could not open calibration pattern configuration: " << config_path
               << std::endl;
     std::abort();
   }
@@ -58,7 +58,7 @@ AprilGrid::AprilGrid(const std::string &config_path) {
   double x_corner_offsets[4] = {0, tagSize, tagSize, 0};
   double y_corner_offsets[4] = {0, 0, tagSize, tagSize};
 
-  aprilgrid_corner_pos_3d.resize(tagCols * tagRows * 4);
+  corner_pos_3d.resize(tagCols * tagRows * 4);
 
   for (int y = 0; y < tagRows; y++) {
     for (int x = 0; x < tagCols; x++) {
@@ -69,7 +69,7 @@ AprilGrid::AprilGrid(const std::string &config_path) {
       for (int i = 0; i < 4; i++) {
         int corner_id = (tag_id << 2) + i;
 
-        Eigen::Vector4d &pos_3d = aprilgrid_corner_pos_3d[corner_id];
+        Eigen::Vector4d &pos_3d = corner_pos_3d[corner_id];
 
         pos_3d[0] = x_offset + x_corner_offsets[i];
         pos_3d[1] = y_offset + y_corner_offsets[i];
@@ -82,26 +82,26 @@ AprilGrid::AprilGrid(const std::string &config_path) {
   int num_vign_points = 5;
   int num_blocks = tagCols * tagRows * 2;
 
-  aprilgrid_vignette_pos_3d.resize((num_blocks + tagCols + tagRows) *
+  vignette_pos_3d.resize((num_blocks + tagCols + tagRows) *
                                    num_vign_points);
 
   for (int k = 0; k < num_vign_points; k++) {
     for (int i = 0; i < tagCols * tagRows; i++) {
-      // const Eigen::Vector3d p0 = aprilgrid_corner_pos_3d[4 * i + 0];
-      const Eigen::Vector4d p1 = aprilgrid_corner_pos_3d[4 * i + 1];
-      const Eigen::Vector4d p2 = aprilgrid_corner_pos_3d[4 * i + 2];
-      const Eigen::Vector4d p3 = aprilgrid_corner_pos_3d[4 * i + 3];
+      // const Eigen::Vector3d p0 = corner_pos_3d[4 * i + 0];
+      const Eigen::Vector4d p1 = corner_pos_3d[4 * i + 1];
+      const Eigen::Vector4d p2 = corner_pos_3d[4 * i + 2];
+      const Eigen::Vector4d p3 = corner_pos_3d[4 * i + 3];
 
       double coeff = double(k + 1) / double(num_vign_points + 1);
 
-      aprilgrid_vignette_pos_3d[k * num_blocks + 2 * i + 0] =
+      vignette_pos_3d[k * num_blocks + 2 * i + 0] =
           (p1 + coeff * (p2 - p1));
-      aprilgrid_vignette_pos_3d[k * num_blocks + 2 * i + 1] =
+      vignette_pos_3d[k * num_blocks + 2 * i + 1] =
           (p2 + coeff * (p3 - p2));
 
-      aprilgrid_vignette_pos_3d[k * num_blocks + 2 * i + 0][0] +=
+      vignette_pos_3d[k * num_blocks + 2 * i + 0][0] +=
           tagSize * tagSpacing / 2;
-      aprilgrid_vignette_pos_3d[k * num_blocks + 2 * i + 1][1] +=
+      vignette_pos_3d[k * num_blocks + 2 * i + 1][1] +=
           tagSize * tagSpacing / 2;
     }
   }
@@ -110,15 +110,15 @@ AprilGrid::AprilGrid(const std::string &config_path) {
 
   for (int k = 0; k < num_vign_points; k++) {
     for (int i = 0; i < tagCols; i++) {
-      const Eigen::Vector4d p0 = aprilgrid_corner_pos_3d[4 * i + 0];
-      const Eigen::Vector4d p1 = aprilgrid_corner_pos_3d[4 * i + 1];
+      const Eigen::Vector4d p0 = corner_pos_3d[4 * i + 0];
+      const Eigen::Vector4d p1 = corner_pos_3d[4 * i + 1];
 
       double coeff = double(k + 1) / double(num_vign_points + 1);
 
-      aprilgrid_vignette_pos_3d[curr_idx + k * tagCols + i] =
+      vignette_pos_3d[curr_idx + k * tagCols + i] =
           (p0 + coeff * (p1 - p0));
 
-      aprilgrid_vignette_pos_3d[curr_idx + k * tagCols + i][1] -=
+      vignette_pos_3d[curr_idx + k * tagCols + i][1] -=
           tagSize * tagSpacing / 2;
     }
   }
@@ -127,15 +127,15 @@ AprilGrid::AprilGrid(const std::string &config_path) {
 
   for (int k = 0; k < num_vign_points; k++) {
     for (int i = 0; i < tagRows; i++) {
-      const Eigen::Vector4d p0 = aprilgrid_corner_pos_3d[4 * i * tagCols + 0];
-      const Eigen::Vector4d p3 = aprilgrid_corner_pos_3d[4 * i * tagCols + 3];
+      const Eigen::Vector4d p0 = corner_pos_3d[4 * i * tagCols + 0];
+      const Eigen::Vector4d p3 = corner_pos_3d[4 * i * tagCols + 3];
 
       double coeff = double(k + 1) / double(num_vign_points + 1);
 
-      aprilgrid_vignette_pos_3d[curr_idx + k * tagRows + i] =
+      vignette_pos_3d[curr_idx + k * tagRows + i] =
           (p0 + coeff * (p3 - p0));
 
-      aprilgrid_vignette_pos_3d[curr_idx + k * tagRows + i][0] -=
+      vignette_pos_3d[curr_idx + k * tagRows + i][0] -=
           tagSize * tagSpacing / 2;
     }
   }

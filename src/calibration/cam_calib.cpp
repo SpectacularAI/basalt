@@ -49,13 +49,13 @@ namespace basalt {
 
 CamCalib::CamCalib(const std::string &dataset_path,
                    const std::string &dataset_type,
-                   const std::string &aprilgrid_path,
+                   const std::string &calib_pattern_path,
                    const std::string &cache_path,
                    const std::string &cache_dataset_name, int skip_images,
                    const std::vector<std::string> &cam_types, bool show_gui)
     : dataset_path(dataset_path),
       dataset_type(dataset_type),
-      april_grid(aprilgrid_path),
+      calib_pattern(calib_pattern_path),
       cache_path(ensure_trailing_slash(cache_path)),
       cache_dataset_name(cache_dataset_name),
       skip_images(skip_images),
@@ -202,7 +202,7 @@ void CamCalib::computeVign() {
 
   VignetteEstimator ve(vio_dataset, optical_centers,
                        calib_opt->calib->resolution, reprojected_vignette2,
-                       april_grid);
+                       calib_pattern);
 
   ve.optimize();
   ve.compute_error(&reprojected_vignette_error);
@@ -323,11 +323,11 @@ void CamCalib::computeProjections() {
       Eigen::Matrix4d T_c_w = T_c_w_.matrix();
 
       calib_opt->calib->intrinsics[i].project(
-          april_grid.aprilgrid_corner_pos_3d, T_c_w, rc.corners_proj,
+          calib_pattern.corner_pos_3d, T_c_w, rc.corners_proj,
           rc.corners_proj_success, polar_azimuthal_angle);
 
       calib_opt->calib->intrinsics[i].project(
-          april_grid.aprilgrid_vignette_pos_3d, T_c_w, rv.corners_proj,
+          calib_pattern.vignette_pos_3d, T_c_w, rv.corners_proj,
           rv.corners_proj_success);
 
       reprojected_corners.emplace(tcid, rc);
@@ -415,7 +415,7 @@ void CamCalib::detectCorners() {
   processing_thread.reset(new std::thread([this]() {
     std::cout << "Started detecting corners" << std::endl;
 
-    CalibHelper::detectCorners(this->vio_dataset, this->april_grid,
+    CalibHelper::detectCorners(this->vio_dataset, this->calib_pattern,
                                this->calib_corners,
                                this->calib_corners_rejected);
 
@@ -471,7 +471,7 @@ void CamCalib::initCamIntrinsics() {
         Eigen::Vector4d init_intr;
 
         bool success = CalibHelper::initializeIntrinsics(
-            cid.corners, cid.corner_ids, april_grid, img_vec[j].img->w,
+            cid.corners, cid.corner_ids, calib_pattern, img_vec[j].img->w,
             img_vec[j].img->h, init_intr);
 
         if (success) {
@@ -514,7 +514,7 @@ void CamCalib::initCamIntrinsics() {
       Eigen::Vector4d init_intr;
 
       bool success = CalibHelper::initializeIntrinsicsPinhole(
-          pinhole_corners, april_grid, w, h, init_intr);
+          pinhole_corners, calib_pattern, w, h, init_intr);
 
       if (success) {
         cam_initialized[j] = true;
@@ -590,7 +590,7 @@ void CamCalib::initCamPoses() {
   std::cout << "Started initial camera pose computation " << std::endl;
 
   CalibHelper::initCamPoses(calib_opt->calib,
-                            april_grid.aprilgrid_corner_pos_3d,
+                            calib_pattern.corner_pos_3d,
                             this->calib_corners, this->calib_init_poses);
 
   std::string path = cache_path + cache_dataset_name + "_init_poses.cereal";
@@ -729,7 +729,7 @@ void CamCalib::initOptimization() {
     return;
   }
 
-  calib_opt->setAprilgridCorners3d(april_grid.aprilgrid_corner_pos_3d);
+  calib_opt->setCalibrationPatternCorners3d(calib_pattern.corner_pos_3d);
 
   std::unordered_set<TimeCamId> invalid_frames;
   for (const auto &kv : calib_corners) {
@@ -773,7 +773,7 @@ void CamCalib::initOptimization() {
 
   for (const auto &kv : calib_corners) {
     if (invalid_frames.count(kv.first) == 0)
-      calib_opt->addAprilgridMeasurement(kv.first.frame_id, kv.first.cam_id,
+      calib_opt->addCalibrationPatternMeasurement(kv.first.frame_id, kv.first.cam_id,
                                          kv.second.corners,
                                          kv.second.corner_ids);
   }

@@ -34,8 +34,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #pragma once
 
-#include <basalt/calibration/aprilgrid.h>
 #include <basalt/calibration/calibration_helper.h>
+#include <basalt/calibration/calibration_pattern.h>
 
 #include <basalt/spline/rd_spline.h>
 
@@ -53,7 +53,7 @@ class VignetteEstimator {
       const Eigen::aligned_vector<Eigen::Vector2i> &resolutions,
       const std::map<TimeCamId, Eigen::aligned_vector<Eigen::Vector3d>>
           &reprojected_vignette,
-      const AprilGrid &april_grid);
+      const CalibrationPattern &calib_pattern);
 
   void compute_error(std::map<TimeCamId, std::vector<double>>
                          *reprojected_vignette_error = nullptr);
@@ -80,7 +80,7 @@ class VignetteEstimator {
   Eigen::aligned_vector<Eigen::Vector2i> resolutions;
   std::map<TimeCamId, Eigen::aligned_vector<Eigen::Vector3d>>
       reprojected_vignette;
-  const AprilGrid &april_grid;
+  const CalibrationPattern &calib_pattern;
 
   size_t vign_size;
   std::vector<double> irradiance;

@@ -35,15 +35,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include <basalt/utils/sophus_utils.hpp>
+#include <memory>
 
 namespace basalt {
 
-struct AprilGrid {
-  AprilGrid(const std::string &config_path);
+class CalibrationPattern {
+public:
+  CalibrationPattern(const std::string &config_path);
 
-  Eigen::aligned_vector<Eigen::Vector4d> aprilgrid_corner_pos_3d;
-  Eigen::aligned_vector<Eigen::Vector4d> aprilgrid_vignette_pos_3d;
+  Eigen::aligned_vector<Eigen::Vector4d> corner_pos_3d;
+  Eigen::aligned_vector<Eigen::Vector4d> vignette_pos_3d;
 
+  // TODO
   inline int getTagCols() const { return tagCols; }
   inline int getTagRows() const { return tagRows; }
 

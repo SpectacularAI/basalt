@@ -74,8 +74,8 @@ struct LinearizeBase {
   typedef typename Eigen::aligned_vector<GyroData>::const_iterator GyroDataIter;
   typedef
       typename Eigen::aligned_vector<AccelData>::const_iterator AccelDataIter;
-  typedef typename Eigen::aligned_vector<AprilgridCornersData>::const_iterator
-      AprilgridCornersDataIter;
+  typedef typename Eigen::aligned_vector<CalibrationPatternCornersData>::const_iterator
+      CalibrationPatternCornersDataIter;
 
   template <int INTRINSICS_SIZE>
   struct PoseCalibH {
@@ -99,7 +99,7 @@ struct LinearizeBase {
   struct CalibCommonData {
     const Calibration<Scalar>* calibration = nullptr;
     const MocapCalibration<Scalar>* mocap_calibration = nullptr;
-    const Eigen::aligned_vector<Eigen::Vector4d>* aprilgrid_corner_pos_3d =
+    const Eigen::aligned_vector<Eigen::Vector4d>* calib_corner_pos_3d =
         nullptr;
 
     // Calib data
@@ -140,11 +140,11 @@ struct LinearizeBase {
     Eigen::Matrix<double, 2, CamT::N> d_r_d_param;
 
     BASALT_ASSERT_STREAM(
-        corner_id < int(common_data.aprilgrid_corner_pos_3d->size()),
+        corner_id < int(common_data.calib_corner_pos_3d->size()),
         "corner_id " << corner_id);
 
     Eigen::Vector4d point3d =
-        T_c_w * common_data.aprilgrid_corner_pos_3d->at(corner_id);
+        T_c_w * common_data.calib_corner_pos_3d->at(corner_id);
 
     Eigen::Vector2d proj;
     bool valid;

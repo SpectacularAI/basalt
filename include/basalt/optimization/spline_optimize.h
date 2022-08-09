@@ -233,8 +233,8 @@ class SplineOptimization {
 
   SE3 getT_w_i(int64_t t_ns) { return spline.pose(t_ns); }
 
-  void setAprilgridCorners3d(const Eigen::aligned_vector<Eigen::Vector4d>& v) {
-    aprilgrid_corner_pos_3d = v;
+  void setCalibrationPatternCorners3d(const Eigen::aligned_vector<Eigen::Vector4d>& v) {
+    calib_corner_pos_3d = v;
   }
 
   void addPoseMeasurement(int64_t t_ns, const SE3& pose) {
@@ -270,18 +270,18 @@ class SplineOptimization {
     gyro_measurements.back().data = meas;
   }
 
-  void addAprilgridMeasurement(
+  void addCalibrationPatternMeasurement(
       int64_t t_ns, int cam_id,
       const Eigen::aligned_vector<Eigen::Vector2d>& corners_pos,
       const std::vector<int>& corner_id) {
     min_time_us = std::min(min_time_us, t_ns);
     max_time_us = std::max(max_time_us, t_ns);
 
-    aprilgrid_corners_measurements.emplace_back();
-    aprilgrid_corners_measurements.back().timestamp_ns = t_ns;
-    aprilgrid_corners_measurements.back().cam_id = cam_id;
-    aprilgrid_corners_measurements.back().corner_pos = corners_pos;
-    aprilgrid_corners_measurements.back().corner_id = corner_id;
+    calib_corners_measurements.emplace_back();
+    calib_corners_measurements.back().timestamp_ns = t_ns;
+    calib_corners_measurements.back().cam_id = cam_id;
+    calib_corners_measurements.back().corner_pos = corners_pos;
+    calib_corners_measurements.back().corner_id = corner_id;
   }
 
   Scalar getMinTime() const { return min_time_us * 1e-9; }
@@ -316,7 +316,7 @@ class SplineOptimization {
 
     ccd.calibration = calib.get();
     ccd.mocap_calibration = mocap_calib.get();
-    ccd.aprilgrid_corner_pos_3d = &aprilgrid_corner_pos_3d;
+    ccd.calib_corner_pos_3d = &calib_corner_pos_3d;
     ccd.g = &g;
     ccd.offset_intrinsics = &offset_cam_intrinsics;
     ccd.offset_T_i_c = &offset_T_i_c;
@@ -366,7 +366,7 @@ class SplineOptimization {
   }
 
   // Returns true when converged
-  bool optimize(bool use_intr, bool use_poses, bool use_april_corners,
+  bool optimize(bool use_intr, bool use_poses, bool use_calib_corners,
                 bool opt_cam_time_offset, bool opt_imu_scale, bool use_mocap,
                 double huber_thresh, double stop_thresh, double& error,
                 int& num_points, double& reprojection_error,
@@ -384,9 +384,9 @@ class SplineOptimization {
 
     tbb::blocked_range<PoseDataIter> pose_range(pose_measurements.begin(),
                                                 pose_measurements.end());
-    tbb::blocked_range<AprilgridCornersDataIter> april_range(
-        aprilgrid_corners_measurements.begin(),
-        aprilgrid_corners_measurements.end());
+    tbb::blocked_range<CalibrationPatternCornersDataIter> calib_range(
+        calib_corners_measurements.begin(),
+        calib_corners_measurements.end());
 
     tbb::blocked_range<MocapPoseDataIter> mocap_pose_range(
         mocap_measurements.begin(), mocap_measurements.end());
@@ -402,9 +402,9 @@ class SplineOptimization {
       // lopt(pose_range);
     }
 
-    if (use_april_corners) {
-      tbb::parallel_reduce(april_range, lopt);
-      // lopt(april_range);
+    if (use_calib_corners) {
+      tbb::parallel_reduce(calib_range, lopt);
+      // lopt(calib_range);
     }
 
     if (use_mocap && mocap_initialized) {
@@ -455,8 +455,8 @@ class SplineOptimization {
         tbb::parallel_reduce(pose_range, eopt);
       }
 
-      if (use_april_corners) {
-        tbb::parallel_reduce(april_range, eopt);
+      if (use_calib_corners) {
+        tbb::parallel_reduce(calib_range, eopt);
       }
 
       if (use_mocap && mocap_initialized) {
@@ -529,8 +529,8 @@ class SplineOptimization {
   typedef typename Eigen::aligned_deque<GyroData>::const_iterator GyroDataIter;
   typedef
       typename Eigen::aligned_deque<AccelData>::const_iterator AccelDataIter;
-  typedef typename Eigen::aligned_deque<AprilgridCornersData>::const_iterator
-      AprilgridCornersDataIter;
+  typedef typename Eigen::aligned_deque<CalibrationPatternCornersData>::const_iterator
+      CalibrationPatternCornersDataIter;
   typedef typename Eigen::aligned_deque<MocapPoseData>::const_iterator
       MocapPoseDataIter;
 
@@ -590,7 +590,7 @@ class SplineOptimization {
   Eigen::aligned_deque<PoseData> pose_measurements;
   Eigen::aligned_deque<GyroData> gyro_measurements;
   Eigen::aligned_deque<AccelData> accel_measurements;
-  Eigen::aligned_deque<AprilgridCornersData> aprilgrid_corners_measurements;
+  Eigen::aligned_deque<CalibrationPatternCornersData> calib_corners_measurements;
   Eigen::aligned_deque<MocapPoseData> mocap_measurements;
 
   typename LinearizeT::CalibCommonData ccd;
@@ -604,7 +604,7 @@ class SplineOptimization {
   SplineT spline;
   Vector3 g;
 
-  Eigen::aligned_vector<Eigen::Vector4d> aprilgrid_corner_pos_3d;
+  Eigen::aligned_vector<Eigen::Vector4d> calib_corner_pos_3d;
 
   int64_t dt_ns;
 };  // namespace basalt

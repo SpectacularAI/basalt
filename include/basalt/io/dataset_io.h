@@ -102,7 +102,7 @@ struct MocapPoseData {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
-struct AprilgridCornersData {
+struct CalibrationPatternCornersData {
   int64_t timestamp_ns;
   int cam_id;
 

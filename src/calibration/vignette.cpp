@@ -45,12 +45,12 @@ VignetteEstimator::VignetteEstimator(
     const Eigen::aligned_vector<Eigen::Vector2i> &resolutions,
     const std::map<TimeCamId, Eigen::aligned_vector<Eigen::Vector3d>>
         &reprojected_vignette,
-    const AprilGrid &april_grid)
+    const CalibrationPattern &calib_pattern)
     : vio_dataset(vio_dataset),
       optical_centers(optical_centers),
       resolutions(resolutions),
       reprojected_vignette(reprojected_vignette),
-      april_grid(april_grid),
+      calib_pattern(calib_pattern),
       vign_param(vio_dataset->get_num_cams(),
                  RdSpline<1, SPLINE_N>(knot_spacing)) {
   vign_size = 0;
@@ -75,7 +75,7 @@ VignetteEstimator::VignetteEstimator(
     }
   }
 
-  irradiance.resize(april_grid.aprilgrid_vignette_pos_3d.size());
+  irradiance.resize(calib_pattern.vignette_pos_3d.size());
   std::fill(irradiance.begin(), irradiance.end(), 1.0);
 }
 
@@ -98,9 +98,9 @@ void VignetteEstimator::compute_error(
     Eigen::Vector2d oc = optical_centers[tcid.cam_id];
 
     BASALT_ASSERT(points_2d_val.size() ==
-                  april_grid.aprilgrid_vignette_pos_3d.size());
+                  calib_pattern.vignette_pos_3d.size());
 
-    std::vector<double> ve(april_grid.aprilgrid_vignette_pos_3d.size());
+    std::vector<double> ve(calib_pattern.vignette_pos_3d.size());
 
     for (size_t i = 0; i < points_2d_val.size(); i++) {
       if (points_2d_val[i][2] >= 0) {
@@ -154,7 +154,7 @@ void VignetteEstimator::opt_irradience() {
     Eigen::Vector2d oc = optical_centers[tcid.cam_id];
 
     BASALT_ASSERT(points_2d_val.size() ==
-                  april_grid.aprilgrid_vignette_pos_3d.size());
+                  calib_pattern.vignette_pos_3d.size());
 
     for (size_t i = 0; i < points_2d_val.size(); i++) {
       if (points_2d_val[i][2] >= 0) {
@@ -196,7 +196,7 @@ void VignetteEstimator::opt_vign() {
     Eigen::Vector2d oc = optical_centers[tcid.cam_id];
 
     BASALT_ASSERT(points_2d_val.size() ==
-                  april_grid.aprilgrid_vignette_pos_3d.size());
+                  calib_pattern.vignette_pos_3d.size());
 
     for (size_t i = 0; i < points_2d_val.size(); i++) {
       if (points_2d_val[i][2] >= 0) {
@@ -259,7 +259,7 @@ void VignetteEstimator::compute_data_log(
     Eigen::Vector2d oc = optical_centers[tcid.cam_id];
 
     BASALT_ASSERT(points_2d.size() ==
-                  april_grid.aprilgrid_vignette_pos_3d.size());
+                  calib_pattern.vignette_pos_3d.size());
 
     for (size_t i = 0; i < points_2d.size(); i++) {
       if (points_2d[i][2] >= 0) {

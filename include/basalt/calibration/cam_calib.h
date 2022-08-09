@@ -47,8 +47,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <limits>
 #include <thread>
 
-#include <basalt/calibration/aprilgrid.h>
 #include <basalt/calibration/calibration_helper.h>
+#include <basalt/calibration/calibration_pattern.h>
 #include <basalt/image/image.h>
 #include <basalt/utils/test_utils.h>
 #include <basalt/utils/sophus_utils.hpp>
@@ -60,7 +60,7 @@ class PosesOptimization;
 class CamCalib {
  public:
   CamCalib(const std::string &dataset_path, const std::string &dataset_type,
-           const std::string &aprilgrid_path, const std::string &cache_path,
+           const std::string &calib_pattern_path, const std::string &cache_path,
            const std::string &cache_dataset_name, int skip_images,
            const std::vector<std::string> &cam_types, bool show_gui = true);
 
@@ -126,7 +126,7 @@ class CamCalib {
   std::string dataset_path;
   std::string dataset_type;
 
-  AprilGrid april_grid;
+  CalibrationPattern calib_pattern;
 
   std::string cache_path;
   std::string cache_dataset_name;

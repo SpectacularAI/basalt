@@ -292,8 +292,8 @@ add_library(basalt SHARED)
 # To support cmake < 3.13, use absolute paths (see: https://crascit.com/2016/01/31/enhanced-source-file-handling-with-target_sources/)
 target_sources(basalt
   PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/basalt/calibration/aprilgrid.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/basalt/calibration/calibration_helper.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/basalt/calibration/calibration_pattern.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/basalt/calibration/cam_calib.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/basalt/calibration/cam_imu_calib.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/basalt/calibration/vignette.h
@@ -351,8 +351,8 @@ target_sources(basalt
     ${CMAKE_CURRENT_SOURCE_DIR}/include/basalt/vi_estimator/sqrt_keypoint_vo.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/basalt/vi_estimator/vio_estimator.h
   PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/calibration/aprilgrid.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/calibration/calibraiton_helper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/calibration/calibration_pattern.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/calibration/vignette.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/io/dataset_io.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/io/marg_data_io.cpp

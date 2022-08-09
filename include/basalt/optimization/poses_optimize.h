@@ -34,8 +34,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #pragma once
 
-#include <basalt/calibration/aprilgrid.h>
 #include <basalt/calibration/calibration_helper.h>
+#include <basalt/calibration/calibration_pattern.h>
 #include <basalt/optimization/poses_linearize.h>
 
 #include <tbb/parallel_reduce.h>
@@ -55,8 +55,8 @@ class PosesOptimization {
   using Vector4 = typename LinearizeT::Vector4;
   using VectorX = typename LinearizeT::VectorX;
 
-  using AprilgridCornersDataIter =
-      typename Eigen::aligned_vector<AprilgridCornersData>::const_iterator;
+  using CalibrationPatternCornersDataIter =
+      typename Eigen::aligned_vector<CalibrationPatternCornersData>::const_iterator;
 
  public:
   PosesOptimization()
@@ -122,10 +122,10 @@ class PosesOptimization {
     LinearizePosesOpt<double, SparseHashAccumulator<double>> lopt(
         problem_size, timestam_to_pose, ccd);
 
-    tbb::blocked_range<AprilgridCornersDataIter> april_range(
-        aprilgrid_corners_measurements.begin(),
-        aprilgrid_corners_measurements.end());
-    tbb::parallel_reduce(april_range, lopt);
+    tbb::blocked_range<CalibrationPatternCornersDataIter> calib_range(
+        calib_corners_measurements.begin(),
+        calib_corners_measurements.end());
+    tbb::parallel_reduce(calib_range, lopt);
 
     error = lopt.error;
     num_points = lopt.num_points;
@@ -170,7 +170,7 @@ class PosesOptimization {
       }
 
       ComputeErrorPosesOpt<double> eopt(problem_size, timestam_to_pose, ccd);
-      tbb::parallel_reduce(april_range, eopt);
+      tbb::parallel_reduce(calib_range, eopt);
 
       double f_diff = (lopt.error - eopt.error);
       double l_diff = 0.5 * inc.dot(inc * lambda - lopt.accum.getB());
@@ -250,30 +250,30 @@ class PosesOptimization {
       return it->second;
   }
 
-  void setAprilgridCorners3d(const Eigen::aligned_vector<Eigen::Vector4d> &v) {
-    aprilgrid_corner_pos_3d = v;
+  void setCalibrationPatternCorners3d(const Eigen::aligned_vector<Eigen::Vector4d> &v) {
+    calib_corner_pos_3d = v;
   }
 
   void init() {
     recompute_size();
 
     ccd.calibration = calib.get();
-    ccd.aprilgrid_corner_pos_3d = &aprilgrid_corner_pos_3d;
+    ccd.calib_corner_pos_3d = &calib_corner_pos_3d;
     ccd.offset_poses = &offset_poses;
     ccd.offset_T_i_c = &offset_T_i_c;
     ccd.offset_intrinsics = &offset_cam_intrinsics;
   }
 
-  void addAprilgridMeasurement(
+  void addCalibrationPatternMeasurement(
       int64_t t_ns, int cam_id,
       const Eigen::aligned_vector<Eigen::Vector2d> &corners_pos,
       const std::vector<int> &corner_id) {
-    aprilgrid_corners_measurements.emplace_back();
+    calib_corners_measurements.emplace_back();
 
-    aprilgrid_corners_measurements.back().timestamp_ns = t_ns;
-    aprilgrid_corners_measurements.back().cam_id = cam_id;
-    aprilgrid_corners_measurements.back().corner_pos = corners_pos;
-    aprilgrid_corners_measurements.back().corner_id = corner_id;
+    calib_corners_measurements.back().timestamp_ns = t_ns;
+    calib_corners_measurements.back().cam_id = cam_id;
+    calib_corners_measurements.back().corner_pos = corners_pos;
+    calib_corners_measurements.back().corner_id = corner_id;
   }
 
   void addPoseMeasurement(int64_t t_ns, const Sophus::SE3d &pose) {
@@ -307,9 +307,9 @@ class PosesOptimization {
   // frame poses
   Eigen::aligned_unordered_map<int64_t, Sophus::SE3d> timestam_to_pose;
 
-  Eigen::aligned_vector<AprilgridCornersData> aprilgrid_corners_measurements;
+  Eigen::aligned_vector<CalibrationPatternCornersData> calib_corners_measurements;
 
-  Eigen::aligned_vector<Eigen::Vector4d> aprilgrid_corner_pos_3d;
+  Eigen::aligned_vector<Eigen::Vector4d> calib_corner_pos_3d;
 };
 
 }  // namespace basalt

@@ -84,8 +84,8 @@ struct LinearizeSplineOpt : public LinearizeBase<Scalar> {
   typedef typename Eigen::aligned_deque<GyroData>::const_iterator GyroDataIter;
   typedef
       typename Eigen::aligned_deque<AccelData>::const_iterator AccelDataIter;
-  typedef typename Eigen::aligned_deque<AprilgridCornersData>::const_iterator
-      AprilgridCornersDataIter;
+  typedef typename Eigen::aligned_deque<CalibrationPatternCornersData>::const_iterator
+      CalibrationPatternCornersDataIter;
   typedef typename Eigen::aligned_deque<MocapPoseData>::const_iterator
       MocapPoseDataIter;
 
@@ -371,8 +371,8 @@ struct LinearizeSplineOpt : public LinearizeBase<Scalar> {
     }
   }
 
-  void operator()(const tbb::blocked_range<AprilgridCornersDataIter>& r) {
-    for (const AprilgridCornersData& acd : r) {
+  void operator()(const tbb::blocked_range<CalibrationPatternCornersDataIter>& r) {
+    for (const CalibrationPatternCornersData& acd : r) {
       std::visit(
           [&](const auto& cam) {
             constexpr int INTRINSICS_SIZE =
@@ -664,8 +664,8 @@ struct ComputeErrorSplineOpt : public LinearizeBase<Scalar> {
   typedef typename Eigen::aligned_deque<GyroData>::const_iterator GyroDataIter;
   typedef
       typename Eigen::aligned_deque<AccelData>::const_iterator AccelDataIter;
-  typedef typename Eigen::aligned_deque<AprilgridCornersData>::const_iterator
-      AprilgridCornersDataIter;
+  typedef typename Eigen::aligned_deque<CalibrationPatternCornersData>::const_iterator
+      CalibrationPatternCornersDataIter;
   typedef typename Eigen::aligned_deque<MocapPoseData>::const_iterator
       MocapPoseDataIter;
 
@@ -769,8 +769,8 @@ struct ComputeErrorSplineOpt : public LinearizeBase<Scalar> {
     }
   }
 
-  void operator()(const tbb::blocked_range<AprilgridCornersDataIter>& r) {
-    for (const AprilgridCornersData& acd : r) {
+  void operator()(const tbb::blocked_range<CalibrationPatternCornersDataIter>& r) {
+    for (const CalibrationPatternCornersData& acd : r) {
       std::visit(
           [&](const auto& cam) {
             int64_t time_ns = acd.timestamp_ns +
