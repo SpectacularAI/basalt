@@ -35,8 +35,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <basalt/calibration/calibration_helper.h>
 
-#include <basalt/utils/apriltag.h>
-
 #include <tbb/parallel_for.h>
 
 #include <opengv/absolute_pose/CentralAbsoluteAdapter.hpp>
@@ -105,9 +103,8 @@ bool estimateTransformation(
   return ransac.inliers_.size() > 8;
 }
 
-// TODO -------------------- add support to checkerboard
 void CalibHelper::detectCorners(const VioDatasetPtr &vio_data,
-                                const CalibrationPattern &april_grid,
+                                const CalibrationPattern &calib_pattern,
                                 CalibCornerMap &calib_corners,
                                 CalibCornerMap &calib_corners_rejected) {
   calib_corners.clear();
@@ -116,9 +113,6 @@ void CalibHelper::detectCorners(const VioDatasetPtr &vio_data,
   tbb::parallel_for(
       tbb::blocked_range<size_t>(0, vio_data->get_image_timestamps().size()),
       [&](const tbb::blocked_range<size_t> &r) {
-        const int numTags = april_grid.getTagCols() * april_grid.getTagRows();
-        ApriltagDetector ad(numTags);
-
         for (size_t j = r.begin(); j != r.end(); ++j) {
           int64_t timestamp_ns = vio_data->get_image_timestamps()[j];
           const std::vector<ImageData> &img_vec =
@@ -128,9 +122,7 @@ void CalibHelper::detectCorners(const VioDatasetPtr &vio_data,
             if (img_vec[i].img.get()) {
               CalibCornerData ccd_good;
               CalibCornerData ccd_bad;
-              ad.detectTags(*img_vec[i].img, ccd_good.corners,
-                            ccd_good.corner_ids, ccd_good.radii,
-                            ccd_bad.corners, ccd_bad.corner_ids, ccd_bad.radii);
+              calib_pattern.detectCorners(img_vec[i], ccd_good, ccd_bad);
 
               //                std::cout << "image (" << timestamp_ns << ","
               //                << i
@@ -178,10 +170,9 @@ void CalibHelper::initCamPoses(
                     });
 }
 
-// TODO -------------------- add support to checkerboard
 bool CalibHelper::initializeIntrinsics(
     const Eigen::aligned_vector<Eigen::Vector2d> &corners,
-    const std::vector<int> &corner_ids, const CalibrationPattern &aprilgrid, int cols,
+    const std::vector<int> &corner_ids, const CalibrationPattern &calib_pattern, int cols,
     int rows, Eigen::Vector4d &init_intr) {
   // First, initialize the image center at the center of the image.
 
@@ -199,36 +190,20 @@ bool CalibHelper::initializeIntrinsics(
   double minReprojErr = std::numeric_limits<double>::max();
 
   // Now we try to find a non-radial line to initialize the focal length
-  const size_t target_cols = aprilgrid.getTagCols();
-  const size_t target_rows = aprilgrid.getTagRows();
-
   bool success = false;
-  for (int tag_corner_offset = 0; tag_corner_offset < 2; tag_corner_offset++)
-    for (size_t r = 0; r < target_rows; ++r) {
-      // cv::Mat P(target.cols(); 4, CV_64F);
+  for (const auto &test_line : calib_pattern.getFocalLengthTestLines()) {
+    // cv::Mat P(target.cols(); 4, CV_64F);
 
-      Eigen::aligned_vector<Eigen::Vector4d> P;
+    Eigen::aligned_vector<Eigen::Vector4d> P;
+    for (int corner_id : test_line) {
+      if (id_to_corner.find(corner_id) != id_to_corner.end()) {
+        const Eigen::Vector2d imagePoint = id_to_corner[corner_id];
 
-      for (size_t c = 0; c < target_cols; ++c) {
-        int tag_offset = (r * target_cols + c) << 2;
+        double u = imagePoint[0] - _cu;
+        double v = imagePoint[1] - _cv;
 
-        for (int i = 0; i < 2; i++) {
-          int corner_id = tag_offset + i + tag_corner_offset * 2;
-
-          // std::cerr << corner_id << " ";
-
-          if (id_to_corner.find(corner_id) != id_to_corner.end()) {
-            const Eigen::Vector2d imagePoint = id_to_corner[corner_id];
-
-            double u = imagePoint[0] - _cu;
-            double v = imagePoint[1] - _cv;
-
-            P.emplace_back(u, v, 0.5, -0.5 * (square(u) + square(v)));
-          }
-        }
+        P.emplace_back(u, v, 0.5, -0.5 * (square(u) + square(v)));
       }
-
-      // std::cerr << std::endl;
 
       const int MIN_CORNERS = 8;
       // MIN_CORNERS is an arbitrary threshold for the number of corners
@@ -279,14 +254,14 @@ bool CalibHelper::initializeIntrinsics(
         size_t num_inliers;
         Sophus::SE3d T_target_camera;
         if (!estimateTransformation(cam_calib, corners, corner_ids,
-                                    aprilgrid.corner_pos_3d,
+                                    calib_pattern.corner_pos_3d,
                                     T_target_camera, num_inliers)) {
           continue;
         }
 
         double reprojErr = 0.0;
         size_t numReprojected = computeReprojectionError(
-            cam_calib, corners, corner_ids, aprilgrid.corner_pos_3d,
+            cam_calib, corners, corner_ids, calib_pattern.corner_pos_3d,
             T_target_camera, reprojErr);
 
         // std::cerr << "numReprojected " << numReprojected << " reprojErr "
@@ -301,9 +276,9 @@ bool CalibHelper::initializeIntrinsics(
             success = true;
           }
         }
-
       }  // If this observation has enough valid corners
-    }    // For each row in the image.
+    }
+  }
 
   if (success) init_intr << 0.5 * gamma0, 0.5 * gamma0, _cu, _cv;
 

@@ -34,46 +34,35 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <cassert>
 #include <fstream>
 #include <sstream>
 
 #include <basalt/calibration/calibration_pattern.h>
+#include <basalt/calibration/calibration_helper.h>
+#include <basalt/utils/apriltag.h>
 
 #include <cereal/archives/json.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 
 namespace basalt {
 namespace {
-enum class CalibrationPatternType {
-  APRIL_GRID = 0,
-  CHECKERBOARD = 1,
-  INVALID = 2
+struct AbstractCalibrationPattern {
+  virtual void detectCorners(const ImageData &img,
+    CalibCornerData &good,
+    CalibCornerData &bad) const = 0;
+
+  virtual std::vector<std::vector<int>> getFocalLengthTestLines() const = 0;
 };
 
-// Deduce pattern type from JSON file (crude since Cereal has poor support for optional stuff)
-CalibrationPatternType getPatternType(const std::string &config_path) {
-  std::ifstream is(config_path);
-  if (!is.is_open()) return CalibrationPatternType::INVALID;
-
-  std::stringstream buf;
-  buf << is.rdbuf();
-
-  const std::string file_content = buf.str();
-  if (file_content.find("aprilgrid")  != std::string::npos)
-    return CalibrationPatternType::APRIL_GRID;
-  if (file_content.find("checkerboard")  != std::string::npos)
-    return CalibrationPatternType::CHECKERBOARD;
-  if (file_content.find("tagCols") != std::string::npos)
-    return CalibrationPatternType::APRIL_GRID;
-  return CalibrationPatternType::INVALID;
-}
-
-struct AprilGrid {
+struct AprilGrid : AbstractCalibrationPattern {
   int tagCols;        // number of apriltags
   int tagRows;        // number of apriltags
   double tagSize;     // size of apriltag, edge to edge [m]
   double tagSpacing;  // ratio of space between tags to tagSize
 
-  void load(std::istream &is, CalibrationPattern &pattern) {
+  AprilGrid(std::istream &is, CalibrationPattern &pattern) {
     cereal::JSONInputArchive ar(is);
     ar(cereal::make_nvp("tagCols", tagCols));
     ar(cereal::make_nvp("tagRows", tagRows));
@@ -165,12 +154,165 @@ struct AprilGrid {
       }
     }
   }
+
+  void detectCorners(const ImageData &img,
+    CalibCornerData &ccd_good,
+    CalibCornerData &ccd_bad) const final
+  {
+    ApriltagDetector ad(tagCols*tagRows);
+    ad.detectTags(*img.img, ccd_good.corners,
+                  ccd_good.corner_ids, ccd_good.radii,
+                  ccd_bad.corners, ccd_bad.corner_ids, ccd_bad.radii);
+  }
+
+  std::vector<std::vector<int>> getFocalLengthTestLines() const final {
+    std::vector<std::vector<int>> result;
+    for (int tag_corner_offset = 0; tag_corner_offset < 2; tag_corner_offset++)
+      for (int r = 0; r < tagRows; ++r) {
+        result.push_back({});
+        std::vector<int> &line = result.back();
+
+
+        for (int c = 0; c < tagCols; ++c) {
+          int tag_offset = (r * tagCols + c) << 2;
+
+          for (int i = 0; i < 2; i++) {
+            int corner_id = tag_offset + i + tag_corner_offset * 2;
+
+            // std::cerr << corner_id << " ";
+            line.push_back(corner_id);
+          }
+        }
+
+        // std::cerr << std::endl;
+      }
+    return result;
+  }
 };
+
+struct Checkerboard : AbstractCalibrationPattern {
+  // Checkerboard fields as named & defined in Kalibr
+  int targetCols;        // number of internal chessboard corners
+  int targetRows;        // number of internal chessboard corners
+  double rowSpacingMeters;  // size of one chessboard square [m]
+  double colSpacingMeters;  // size of one chessboard square [m]
+
+  Checkerboard(std::istream &is, CalibrationPattern &pattern) {
+    cereal::JSONInputArchive ar(is);
+    ar(cereal::make_nvp("targetCols", targetCols));
+    ar(cereal::make_nvp("targetRows", targetRows));
+    ar(cereal::make_nvp("rowSpacingMeters", rowSpacingMeters));
+    ar(cereal::make_nvp("colSpacingMeters", colSpacingMeters));
+    pattern.corner_pos_3d.resize(targetCols * targetRows);
+
+    Eigen::Vector4d vignette_offset(colSpacingMeters * 0.5, rowSpacingMeters * 0.5, 0, 0);
+
+    for (int y = -1; y < targetRows; y++) {
+      for (int x = -1; x < targetCols; x++) {
+        Eigen::Vector4d pos_3d;
+        pos_3d[0] = x * colSpacingMeters;
+        pos_3d[1] = y * rowSpacingMeters;
+        pos_3d[2] = 0;
+        pos_3d[3] = 1;
+
+        if (x >= 0 && y >= 0) {
+          int corner_id = targetCols * y + x;
+          pattern.corner_pos_3d[corner_id] = pos_3d;
+        }
+
+        if ((x + y + (targetCols*targetRows*2)) % 2 == 1) {
+          // white corners
+          pattern.vignette_pos_3d.push_back(pos_3d + vignette_offset);
+        }
+      }
+    }
+  }
+
+  void detectCorners(const ImageData &img,
+    CalibCornerData &ccd_good,
+    CalibCornerData &ccd_bad) const final
+  {
+    ccd_good.corner_ids.clear();
+    ccd_good.corners.clear();
+    ccd_good.radii.clear();
+
+    ccd_bad.corner_ids.clear();
+    ccd_bad.corners.clear();
+    ccd_bad.radii.clear();
+
+    const auto &img_raw = *img.img;
+    cv::Mat image(img_raw.h, img_raw.w, CV_8U);
+    uint8_t* dst = image.ptr();
+    const uint16_t* src = img_raw.ptr;
+    for (size_t i = 0; i < img_raw.size(); i++) dst[i] = (src[i] >> 8);
+
+    cv::Size pattern_size(targetCols, targetRows); // apparently cols, rows (the docs say otherwise?)
+    std::vector<cv::Point2f> corners;
+    if (!cv::findChessboardCorners(image, pattern_size, corners)) return;
+    assert(int(corners.size()) == targetCols * targetRows);
+
+    // auto-detect subpix pattern size
+    constexpr int MAX_SUBPIX_PATTERN_SIZE = 15;
+    float minDist2 = MAX_SUBPIX_PATTERN_SIZE*MAX_SUBPIX_PATTERN_SIZE;
+    for (int y=0; y<targetRows; ++y) {
+      for (int x=1; x<targetCols; ++x) {
+        int c_id1 = y * targetCols + x;
+        int c_id0 = c_id1 - 1;
+        auto diff = corners.at(c_id1) - corners.at(c_id0);
+        float dist2 = diff.x*diff.x + diff.y*diff.y;
+        minDist2 = std::min(minDist2, dist2);
+      }
+    }
+
+    const int subpixPatternSize = std::min(MAX_SUBPIX_PATTERN_SIZE, int(std::sqrt(minDist2)*0.5 + 0.5));
+    // std::cout << "subpixel pattern size " << subpixPatternSize << std::endl;
+
+    if (subpixPatternSize > 1) {
+      // values from in OpenCV docs
+      constexpr int SUBPIX_ITR = 30;
+      constexpr double SUBPIX_EPS = 0.1;
+      cv::cornerSubPix(image, corners,
+        cv::Size(subpixPatternSize, subpixPatternSize),
+        cv::Size(-1, -1),
+        cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, SUBPIX_ITR, SUBPIX_EPS));
+      assert(int(corners.size()) == targetCols * targetRows);
+    }
+
+    constexpr double RADIUS = 2.0; // not sure how this is defined
+
+    for (int corner_id = 0; corner_id < int(corners.size()); ++corner_id) {
+      ccd_good.corner_ids.push_back(corner_id);
+      const auto &c = corners.at(corner_id);
+      ccd_good.corners.push_back(Eigen::Vector2d(c.x, c.y));
+      ccd_good.radii.push_back(RADIUS);
+    }
+  }
+
+  std::vector<std::vector<int>> getFocalLengthTestLines() const final {
+    std::vector<std::vector<int>> result;
+    for (int r = 0; r < targetRows; ++r) {
+      result.push_back({});
+      std::vector<int> &line = result.back();
+      for (int c = 0; c < targetCols; ++c) {
+        int corner_id = r * targetCols + c;
+        line.push_back(corner_id);
+      }
+    }
+    return result;
+  }
+};
+
+std::string slurpFile(const std::string &path) {
+  std::ifstream is(path);
+  if (!is.is_open()) std::abort();
+  std::stringstream buf;
+  buf << is.rdbuf();
+  return buf.str();
+}
 }
 
 struct CalibrationPattern::Impl {
-  CalibrationPatternType type;
-  AprilGrid aprilGrid;
+  std::unique_ptr<AbstractCalibrationPattern> abstractPattern;
 
   Impl(const std::string &config_path, CalibrationPattern &pattern) {
     std::ifstream is(config_path);
@@ -180,21 +322,14 @@ struct CalibrationPattern::Impl {
       std::abort();
     }
 
-    switch (getPatternType(config_path)) {
-    case CalibrationPatternType::APRIL_GRID: aprilGrid.load(is, pattern); break;
-    case CalibrationPatternType::CHECKERBOARD:
-      std::cerr << "TODO: checkerboard pattern not implemented" << std::endl;
-      std::abort();
-      break;
-    default:
+    // Deduce pattern type from JSON file (crude since Cereal has poor support for optional stuff)
+    const std::string file_content = slurpFile(config_path);
+    if (file_content.find("checkerboard")  != std::string::npos)
+      abstractPattern = std::make_unique<Checkerboard>(is, pattern);
+    else if (file_content.find("aprilgrid")  != std::string::npos || file_content.find("tagCols") != std::string::npos)
+      abstractPattern = std::make_unique<AprilGrid>(is, pattern);
+    else {
       std::cerr << "Invalid calibration pattern type" << std::endl;
-      return;
-    }
-  }
-
-  void checkIsAprilGrid() const {
-    if (type != CalibrationPatternType::APRIL_GRID) {
-      std::cerr << "calibration pattern is not AprilGrid, operation not supported";
       std::abort();
     }
   }
@@ -206,16 +341,15 @@ CalibrationPattern::CalibrationPattern(const std::string &config_path) :
 
 CalibrationPattern::~CalibrationPattern() = default;
 
-int CalibrationPattern::getTagCols() const {
-  assert(pImpl);
-  pImpl->checkIsAprilGrid();
-  return pImpl->aprilGrid.tagCols;
+void CalibrationPattern::detectCorners(const ImageData &img,
+  CalibCornerData &goodCorners,
+  CalibCornerData &badCorners) const {
+  pImpl->abstractPattern->detectCorners(img, goodCorners, badCorners);
 }
 
-int CalibrationPattern::getTagRows() const {
-  assert(pImpl);
-  pImpl->checkIsAprilGrid();
-  return pImpl->aprilGrid.tagRows;
+// Returns a list of lines, each of which consists of a list of corner IDs
+std::vector<std::vector<int>> CalibrationPattern::getFocalLengthTestLines() const {
+  return pImpl->abstractPattern->getFocalLengthTestLines();
 }
 
 }  // namespace basalt

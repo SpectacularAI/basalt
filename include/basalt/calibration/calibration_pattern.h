@@ -35,9 +35,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include <basalt/utils/sophus_utils.hpp>
+#include <vector>
 #include <memory>
 
 namespace basalt {
+struct ImageData;
+struct CalibCornerData;
 
 class CalibrationPattern {
 public:
@@ -47,9 +50,12 @@ public:
   Eigen::aligned_vector<Eigen::Vector4d> corner_pos_3d;
   Eigen::aligned_vector<Eigen::Vector4d> vignette_pos_3d;
 
-  // TODO
-  int getTagCols() const;
-  int getTagRows() const;
+  void detectCorners(const ImageData &img,
+    CalibCornerData &goodCorners,
+    CalibCornerData &badCorners) const;
+
+  // Returns a list of lines, each of which consists of a list of corner IDs
+  std::vector<std::vector<int>> getFocalLengthTestLines() const;
 
  private:
   struct Impl;
