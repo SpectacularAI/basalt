@@ -49,6 +49,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace basalt {
 namespace {
 struct AbstractCalibrationPattern {
+  virtual ~AbstractCalibrationPattern() = default;
+
   virtual void detectCorners(const ImageData &img,
     CalibCornerData &good,
     CalibCornerData &bad) const = 0;
