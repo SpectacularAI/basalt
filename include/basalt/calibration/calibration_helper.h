@@ -40,6 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/calibration/calibration.hpp>
 
 #include <tbb/concurrent_unordered_map.h>
+#include <tbb/concurrent_map.h>
 
 namespace basalt {
 
@@ -72,8 +73,7 @@ using CalibCornerMap = tbb::concurrent_unordered_map<TimeCamId, CalibCornerData,
                                                      std::hash<TimeCamId>>;
 
 using CalibInitPoseMap =
-    tbb::concurrent_unordered_map<TimeCamId, CalibInitPoseData,
-                                  std::hash<TimeCamId>>;
+    tbb::concurrent_map<TimeCamId, CalibInitPoseData>;
 
 class CalibHelper {
  public:
