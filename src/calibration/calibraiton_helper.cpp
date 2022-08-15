@@ -92,7 +92,8 @@ bool estimateTransformation(
   ransac.threshold_ = 1.0 - cos(atan(sqrt(2.0) * 1 / cam_calib.getParam()[0]));
   ransac.max_iterations_ = 50;
 
-  ransac.computeModel();
+  bool result = ransac.computeModel();
+  if (!result) return false;
 
   T_target_camera =
       Sophus::SE3d(ransac.model_coefficients_.topLeftCorner<3, 3>(),
