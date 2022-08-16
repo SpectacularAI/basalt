@@ -39,6 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/utils/common_types.h>
 #include <basalt/calibration/calibration.hpp>
 
+#define TBB_PREVIEW_CONCURRENT_ORDERED_CONTAINERS 1
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/concurrent_map.h>
 
