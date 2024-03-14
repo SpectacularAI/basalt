@@ -251,9 +251,13 @@ void CamCalib::renderingLoop() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     if (vio_dataset.get()) {
+      if (vio_dataset->get_image_timestamps().empty()) {
+        std::cout << "No image (timestamp) data." << std::endl;
+        return; // Else will crash below.
+      }
       if (show_frame.GuiChanged()) {
         size_t frame_id = static_cast<size_t>(show_frame);
-        int64_t timestamp = vio_dataset->get_image_timestamps()[frame_id];
+        int64_t timestamp = vio_dataset->get_image_timestamps().at(frame_id);
 
         const std::vector<ImageData> &img_vec =
             vio_dataset->get_image_data(timestamp);
