@@ -123,7 +123,7 @@ void CalibHelper::detectCorners(const VioDatasetPtr &vio_data,
             if (img_vec[i].img.get()) {
               CalibCornerData ccd_good;
               CalibCornerData ccd_bad;
-              calib_pattern.detectCorners(img_vec[i], ccd_good, ccd_bad);
+              calib_pattern.detectCorners(img_vec[i], ccd_good, ccd_bad, timestamp_ns);
 
               //                std::cout << "image (" << timestamp_ns << ","
               //                << i

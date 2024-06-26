@@ -53,7 +53,8 @@ struct AbstractCalibrationPattern {
 
   virtual void detectCorners(const ImageData &img,
     CalibCornerData &good,
-    CalibCornerData &bad) const = 0;
+    CalibCornerData &bad,
+    const int64_t timestamp_ns) const = 0;
 
   virtual std::vector<std::vector<int>> getFocalLengthTestLines() const = 0;
 };
@@ -159,8 +160,10 @@ struct AprilGrid : AbstractCalibrationPattern {
 
   void detectCorners(const ImageData &img,
     CalibCornerData &ccd_good,
-    CalibCornerData &ccd_bad) const final
+    CalibCornerData &ccd_bad,
+    const int64_t timestamp_ns) const final
   {
+    (void)timestamp_ns;
     ApriltagDetector ad(tagCols*tagRows);
     ad.detectTags(*img.img, ccd_good.corners,
                   ccd_good.corner_ids, ccd_good.radii,
@@ -232,8 +235,10 @@ struct Checkerboard : AbstractCalibrationPattern {
 
   void detectCorners(const ImageData &img,
     CalibCornerData &ccd_good,
-    CalibCornerData &ccd_bad) const final
+    CalibCornerData &ccd_bad,
+    const int64_t timestamp_ns) const final
   {
+    (void)timestamp_ns;
     ccd_good.corner_ids.clear();
     ccd_good.corners.clear();
     ccd_good.radii.clear();
@@ -304,6 +309,103 @@ struct Checkerboard : AbstractCalibrationPattern {
   }
 };
 
+struct CustomCalibrationTargetPoint2D {
+    std::vector<double> pixel;
+    int id;
+
+    // Make this struct serializable
+    template <class Archive>
+    void serialize(Archive& archive) {
+        archive(CEREAL_NVP(pixel), CEREAL_NVP(id));
+    }
+};
+
+// Define a struct for the images
+struct CustomCalibrationTargetFrame {
+    int id;
+    double time;
+    std::vector<CustomCalibrationTargetPoint2D> points2d;
+
+    // Make this struct serializable
+    template <class Archive>
+    void serialize(Archive& archive) {
+        archive(CEREAL_NVP(id), CEREAL_NVP(time), CEREAL_NVP(points2d));
+    }
+};
+
+struct CustomCalibrationTarget : AbstractCalibrationPattern {
+private:
+  std::vector<CustomCalibrationTargetFrame> frameData;
+  std::unordered_map<int64_t, size_t> timeToFrameId;
+
+public:
+
+  CustomCalibrationTarget(std::istream &is, CalibrationPattern &pattern) {
+    cereal::JSONInputArchive ar(is);
+    std::string type;
+    ar(cereal::make_nvp("kind", type));
+    assert(type == "custom");
+
+    std::vector<std::vector<double>> pos3d;
+    ar(cereal::make_nvp("features3d", pos3d));
+    pattern.corner_pos_3d.resize(pos3d.size());
+    for (size_t i = 0; i < pos3d.size(); i++) {
+      const auto &pos = pos3d[i];
+      pattern.corner_pos_3d[i] = Eigen::Vector4d(pos[0], pos[1], pos[2], 1);
+    }
+    std::cout << "Found " << pattern.corner_pos_3d.size() << " 3d points" << std::endl;
+
+    ar(cereal::make_nvp("images", frameData));
+    for (size_t i = 0; i < frameData.size(); i++) {
+      int64_t time = frameData[i].time * 1e9;
+      timeToFrameId[time] = i;
+    }
+    std::cout << "Found " << frameData.size() << " frames" << std::endl;
+
+  }
+
+  void detectCorners(const ImageData &img,
+    CalibCornerData &ccd_good,
+    CalibCornerData &ccd_bad,
+    const int64_t timestamp_ns) const final
+  {
+    (void)img;
+
+    ccd_good.corner_ids.clear();
+    ccd_good.corners.clear();
+    ccd_good.radii.clear();
+
+    ccd_bad.corner_ids.clear();
+    ccd_bad.corners.clear();
+    ccd_bad.radii.clear();
+
+    size_t frameId;
+    if (auto search = timeToFrameId.find(timestamp_ns); search != timeToFrameId.end()) {
+      frameId = search->second;
+    } else {
+      // No features for this frame
+      return;
+    }
+    const auto &fd = frameData[frameId];
+
+    constexpr double RADIUS = 2.0; // not sure how this is defined
+
+    for (size_t i = 0; i < fd.points2d.size(); i++) {
+      const auto &p = fd.points2d[i];
+      ccd_good.corner_ids.push_back(p.id);
+      ccd_good.corners.push_back(Eigen::Vector2d(p.pixel[0], p.pixel[1]));
+      ccd_good.radii.push_back(RADIUS);
+    }
+  }
+
+  std::vector<std::vector<int>> getFocalLengthTestLines() const final {
+    std::cerr << "getFocalLengthTestLines() not implemented on Custom calibration target!" << std::endl;
+
+    std::vector<std::vector<int>> result;
+    return result;
+  }
+};
+
 std::string slurpFile(const std::string &path) {
   std::ifstream is(path);
   if (!is.is_open()) std::abort();
@@ -328,6 +430,8 @@ struct CalibrationPattern::Impl {
     const std::string file_content = slurpFile(config_path);
     if (file_content.find("checkerboard")  != std::string::npos)
       abstractPattern = std::make_unique<Checkerboard>(is, pattern);
+    if (file_content.find("custom")  != std::string::npos)
+      abstractPattern = std::make_unique<CustomCalibrationTarget>(is, pattern);
     else if (file_content.find("aprilgrid")  != std::string::npos || file_content.find("tagCols") != std::string::npos)
       abstractPattern = std::make_unique<AprilGrid>(is, pattern);
     else {
@@ -345,8 +449,9 @@ CalibrationPattern::~CalibrationPattern() = default;
 
 void CalibrationPattern::detectCorners(const ImageData &img,
   CalibCornerData &goodCorners,
-  CalibCornerData &badCorners) const {
-  pImpl->abstractPattern->detectCorners(img, goodCorners, badCorners);
+  CalibCornerData &badCorners,
+  const int64_t timestamp_ns) const {
+  pImpl->abstractPattern->detectCorners(img, goodCorners, badCorners, timestamp_ns);
 }
 
 // Returns a list of lines, each of which consists of a list of corner IDs
