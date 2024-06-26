@@ -400,8 +400,104 @@ public:
 
   std::vector<std::vector<int>> getFocalLengthTestLines() const final {
     std::cerr << "getFocalLengthTestLines() not implemented on Custom calibration target!" << std::endl;
-
     std::vector<std::vector<int>> result;
+    return result;
+  }
+};
+
+struct ExternalCheckerboard : AbstractCalibrationPattern {
+private:
+  std::vector<CustomCalibrationTargetFrame> frameData;
+  std::unordered_map<int64_t, size_t> timeToFrameId;
+  int targetCols;        // number of internal chessboard corners
+  int targetRows;        // number of internal chessboard corners
+  double rowSpacingMeters;  // size of one chessboard square [m]
+  double colSpacingMeters;  // size of one chessboard square [m]
+
+public:
+
+  ExternalCheckerboard(std::istream &is, CalibrationPattern &pattern) {
+    cereal::JSONInputArchive ar(is);
+    std::string type;
+    ar(cereal::make_nvp("kind", type));
+    assert(type == "external_checker");
+
+    ar(cereal::make_nvp("targetCols", targetCols));
+    ar(cereal::make_nvp("targetRows", targetRows));
+    ar(cereal::make_nvp("rowSpacingMeters", rowSpacingMeters));
+    ar(cereal::make_nvp("colSpacingMeters", colSpacingMeters));
+    pattern.corner_pos_3d.resize(targetCols * targetRows);
+    Eigen::Vector4d vignette_offset(colSpacingMeters * 0.5, rowSpacingMeters * 0.5, 0, 0);
+    for (int y = -1; y < targetRows; y++) {
+      for (int x = -1; x < targetCols; x++) {
+        Eigen::Vector4d pos_3d;
+        pos_3d[0] = x * colSpacingMeters;
+        pos_3d[1] = y * rowSpacingMeters;
+        pos_3d[2] = 0;
+        pos_3d[3] = 1;
+        if (x >= 0 && y >= 0) {
+          int corner_id = targetCols * y + x;
+          pattern.corner_pos_3d[corner_id] = pos_3d;
+        }
+        if ((x + y + (targetCols*targetRows*2)) % 2 == 1) {
+          // white corners
+          pattern.vignette_pos_3d.push_back(pos_3d + vignette_offset);
+        }
+      }
+    }
+
+    ar(cereal::make_nvp("images", frameData));
+    for (size_t i = 0; i < frameData.size(); i++) {
+      int64_t time = frameData[i].time * 1e9;
+      timeToFrameId[time] = i;
+    }
+    std::cout << "Found " << frameData.size() << " frames" << std::endl;
+  }
+
+  void detectCorners(const ImageData &img,
+    CalibCornerData &ccd_good,
+    CalibCornerData &ccd_bad,
+    const int64_t timestamp_ns) const final
+  {
+    (void)img;
+
+    ccd_good.corner_ids.clear();
+    ccd_good.corners.clear();
+    ccd_good.radii.clear();
+
+    ccd_bad.corner_ids.clear();
+    ccd_bad.corners.clear();
+    ccd_bad.radii.clear();
+
+    size_t frameId;
+    if (auto search = timeToFrameId.find(timestamp_ns); search != timeToFrameId.end()) {
+      frameId = search->second;
+    } else {
+      // No features for this frame
+      return;
+    }
+    const auto &fd = frameData[frameId];
+
+    constexpr double RADIUS = 2.0; // not sure how this is defined
+
+    for (size_t i = 0; i < fd.points2d.size(); i++) {
+      const auto &p = fd.points2d[i];
+      ccd_good.corner_ids.push_back(p.id);
+      ccd_good.corners.push_back(Eigen::Vector2d(p.pixel[0], p.pixel[1]));
+      ccd_good.radii.push_back(RADIUS);
+    }
+  }
+
+  std::vector<std::vector<int>> getFocalLengthTestLines() const final {
+    std::vector<std::vector<int>> result;
+    for (int r = 0; r < targetRows; ++r) {
+      result.push_back({});
+      std::vector<int> &line = result.back();
+      for (int c = 0; c < targetCols; ++c) {
+        int corner_id = r * targetCols + c;
+        line.push_back(corner_id);
+      }
+    }
     return result;
   }
 };
@@ -430,8 +526,10 @@ struct CalibrationPattern::Impl {
     const std::string file_content = slurpFile(config_path);
     if (file_content.find("checkerboard")  != std::string::npos)
       abstractPattern = std::make_unique<Checkerboard>(is, pattern);
-    if (file_content.find("custom")  != std::string::npos)
+    else if (file_content.find("custom")  != std::string::npos)
       abstractPattern = std::make_unique<CustomCalibrationTarget>(is, pattern);
+    else if (file_content.find("ext_checker")  != std::string::npos)
+      abstractPattern = std::make_unique<ExternalCheckerboard>(is, pattern);
     else if (file_content.find("aprilgrid")  != std::string::npos || file_content.find("tagCols") != std::string::npos)
       abstractPattern = std::make_unique<AprilGrid>(is, pattern);
     else {
