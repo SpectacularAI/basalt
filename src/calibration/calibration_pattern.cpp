@@ -420,7 +420,7 @@ public:
     cereal::JSONInputArchive ar(is);
     std::string type;
     ar(cereal::make_nvp("kind", type));
-    assert(type == "external_checker");
+    assert(type == "ext_checker");
 
     ar(cereal::make_nvp("targetCols", targetCols));
     ar(cereal::make_nvp("targetRows", targetRows));
