@@ -53,7 +53,8 @@ public:
   void detectCorners(const ImageData &img,
     CalibCornerData &goodCorners,
     CalibCornerData &badCorners,
-    const int64_t timestamp_ns) const;
+    const int64_t timestamp_ns,
+    int camIdx) const;
 
   // Returns a list of lines, each of which consists of a list of corner IDs
   std::vector<std::vector<int>> getFocalLengthTestLines() const;

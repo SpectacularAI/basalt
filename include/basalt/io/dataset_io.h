@@ -71,6 +71,7 @@ struct ImageData {
 
   ManagedImage<uint16_t>::Ptr img;
   double exposure;
+  int index = -1;
 };
 
 struct Observations {

@@ -54,7 +54,8 @@ struct AbstractCalibrationPattern {
   virtual void detectCorners(const ImageData &img,
     CalibCornerData &good,
     CalibCornerData &bad,
-    const int64_t timestamp_ns) const = 0;
+    const int64_t timestamp_ns,
+    int camIdx) const = 0;
 
   virtual std::vector<std::vector<int>> getFocalLengthTestLines() const = 0;
 };
@@ -161,9 +162,11 @@ struct AprilGrid : AbstractCalibrationPattern {
   void detectCorners(const ImageData &img,
     CalibCornerData &ccd_good,
     CalibCornerData &ccd_bad,
-    const int64_t timestamp_ns) const final
+    const int64_t timestamp_ns,
+    int camIdx) const final
   {
     (void)timestamp_ns;
+    (void)camIdx;
     ApriltagDetector ad(tagCols*tagRows);
     ad.detectTags(*img.img, ccd_good.corners,
                   ccd_good.corner_ids, ccd_good.radii,
@@ -236,9 +239,11 @@ struct Checkerboard : AbstractCalibrationPattern {
   void detectCorners(const ImageData &img,
     CalibCornerData &ccd_good,
     CalibCornerData &ccd_bad,
-    const int64_t timestamp_ns) const final
+    const int64_t timestamp_ns,
+    int camIdx) const final
   {
     (void)timestamp_ns;
+    (void)camIdx;
     ccd_good.corner_ids.clear();
     ccd_good.corners.clear();
     ccd_good.radii.clear();
@@ -333,10 +338,40 @@ struct CustomCalibrationTargetFrame {
     }
 };
 
+struct FrameDataIndex {
+  std::unordered_map<int64_t, int> timeToFrameId;
+  std::unordered_map<int, int> numberToFrameId;
+
+  void add(int64_t time, int number, int index) {
+    // TODO: use camIdx
+    if (timeToFrameId.count(time)) {
+      std::cerr << "Duplicate timestamp " << time << " in custom calibration target!" << std::endl;
+    }
+    timeToFrameId[time] = index;
+
+    assert(!numberToFrameId.count(number));
+    if (number != -1)
+      numberToFrameId[number] = index;
+  }
+
+  int get(int64_t time, int number) const {
+    if (number != -1 && numberToFrameId.count(number)) {
+      return numberToFrameId.at(number);
+    }
+
+    if (timeToFrameId.count(time)) {
+      std::cerr << "matching by timestamp" << std::endl;
+      return timeToFrameId.at(time);
+    }
+
+    return -1;
+  }
+};
+
 struct CustomCalibrationTarget : AbstractCalibrationPattern {
 private:
   std::vector<CustomCalibrationTargetFrame> frameData;
-  std::unordered_map<int64_t, size_t> timeToFrameId;
+  FrameDataIndex frameDataIndex;
 
 public:
 
@@ -358,7 +393,7 @@ public:
     ar(cereal::make_nvp("images", frameData));
     for (size_t i = 0; i < frameData.size(); i++) {
       int64_t time = frameData[i].time * 1e9;
-      timeToFrameId[time] = i;
+      frameDataIndex.add(time, frameData[i].id, i);
     }
     std::cout << "Found " << frameData.size() << " frames" << std::endl;
 
@@ -367,9 +402,11 @@ public:
   void detectCorners(const ImageData &img,
     CalibCornerData &ccd_good,
     CalibCornerData &ccd_bad,
-    const int64_t timestamp_ns) const final
+    const int64_t timestamp_ns,
+    int camIdx) const final
   {
     (void)img;
+    (void)camIdx;
 
     ccd_good.corner_ids.clear();
     ccd_good.corners.clear();
@@ -379,14 +416,9 @@ public:
     ccd_bad.corners.clear();
     ccd_bad.radii.clear();
 
-    size_t frameId;
-    if (auto search = timeToFrameId.find(timestamp_ns); search != timeToFrameId.end()) {
-      frameId = search->second;
-    } else {
-      // No features for this frame
-      return;
-    }
-    const auto &fd = frameData[frameId];
+    int idx = frameDataIndex.get(timestamp_ns, img.index);
+    if (idx == -1) return;
+    const auto &fd = frameData[idx];
 
     constexpr double RADIUS = 2.0; // not sure how this is defined
 
@@ -408,7 +440,7 @@ public:
 struct ExternalCheckerboard : AbstractCalibrationPattern {
 private:
   std::vector<CustomCalibrationTargetFrame> frameData;
-  std::unordered_map<int64_t, size_t> timeToFrameId;
+  FrameDataIndex frameDataIndex;
   int targetCols;        // number of internal chessboard corners
   int targetRows;        // number of internal chessboard corners
   double rowSpacingMeters;  // size of one chessboard square [m]
@@ -449,7 +481,7 @@ public:
     ar(cereal::make_nvp("images", frameData));
     for (size_t i = 0; i < frameData.size(); i++) {
       int64_t time = frameData[i].time * 1e9;
-      timeToFrameId[time] = i;
+      frameDataIndex.add(time, frameData[i].id, i);
     }
     std::cout << "Found " << frameData.size() << " frames" << std::endl;
   }
@@ -457,9 +489,11 @@ public:
   void detectCorners(const ImageData &img,
     CalibCornerData &ccd_good,
     CalibCornerData &ccd_bad,
-    const int64_t timestamp_ns) const final
+    const int64_t timestamp_ns,
+    int camIdx) const final
   {
     (void)img;
+    (void)camIdx;
 
     ccd_good.corner_ids.clear();
     ccd_good.corners.clear();
@@ -469,14 +503,9 @@ public:
     ccd_bad.corners.clear();
     ccd_bad.radii.clear();
 
-    size_t frameId;
-    if (auto search = timeToFrameId.find(timestamp_ns); search != timeToFrameId.end()) {
-      frameId = search->second;
-    } else {
-      // No features for this frame
-      return;
-    }
-    const auto &fd = frameData[frameId];
+    int idx = frameDataIndex.get(timestamp_ns, img.index);
+    if (idx == -1) return;
+    const auto &fd = frameData[idx];
 
     constexpr double RADIUS = 2.0; // not sure how this is defined
 
@@ -548,8 +577,9 @@ CalibrationPattern::~CalibrationPattern() = default;
 void CalibrationPattern::detectCorners(const ImageData &img,
   CalibCornerData &goodCorners,
   CalibCornerData &badCorners,
-  const int64_t timestamp_ns) const {
-  pImpl->abstractPattern->detectCorners(img, goodCorners, badCorners, timestamp_ns);
+  const int64_t timestamp_ns,
+  int camIdx) const {
+  pImpl->abstractPattern->detectCorners(img, goodCorners, badCorners, timestamp_ns, camIdx);
 }
 
 // Returns a list of lines, each of which consists of a list of corner IDs
