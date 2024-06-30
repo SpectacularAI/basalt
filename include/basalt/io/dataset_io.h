@@ -61,6 +61,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/image/image.h>
 #include <basalt/utils/assert.h>
 
+#include <basalt/calibration/calibration.hpp>
 #include <basalt/camera/generic_camera.hpp>
 #include <basalt/camera/stereographic_param.hpp>
 
@@ -126,6 +127,8 @@ class VioDataset {
       const = 0;
   virtual int64_t get_mocap_to_imu_offset_ns() const = 0;
   virtual std::vector<ImageData> get_image_data(int64_t t_ns) = 0;
+
+  virtual Calibration<double> *get_calib() { return nullptr; }
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

@@ -453,81 +453,87 @@ void CamCalib::initCamIntrinsics() {
 
   if (!calib_opt) calib_opt.reset(new PosesOptimization);
 
-  calib_opt->resetCalib(vio_dataset->get_num_cams(), cam_types);
+  const auto *dataset_calib = vio_dataset->get_calib();
+  if (dataset_calib) {
+    calib_opt->calib = std::make_shared<Calibration<double>>(*dataset_calib);
+    std::cout << "Copied initial calib from VIO dataset" << std::endl;
+  } else {
+    calib_opt->resetCalib(vio_dataset->get_num_cams(), cam_types);
 
-  std::vector<bool> cam_initialized(vio_dataset->get_num_cams(), false);
+    std::vector<bool> cam_initialized(vio_dataset->get_num_cams(), false);
 
-  int inc = 1;
-  if (vio_dataset->get_image_timestamps().size() > 100) inc = 3;
+    int inc = 1;
+    if (vio_dataset->get_image_timestamps().size() > 100) inc = 3;
 
-  for (size_t j = 0; j < vio_dataset->get_num_cams(); j++) {
-    for (size_t i = 0; i < vio_dataset->get_image_timestamps().size();
-         i += inc) {
-      const int64_t timestamp_ns = vio_dataset->get_image_timestamps()[i];
-      const std::vector<basalt::ImageData> &img_vec =
-          vio_dataset->get_image_data(timestamp_ns);
-
-      TimeCamId tcid(timestamp_ns, j);
-
-      if (calib_corners.find(tcid) != calib_corners.end()) {
-        CalibCornerData cid = calib_corners.at(tcid);
-
-        Eigen::Vector4d init_intr;
-
-        bool success = CalibHelper::initializeIntrinsics(
-            cid.corners, cid.corner_ids, calib_pattern, img_vec[j].img->w,
-            img_vec[j].img->h, init_intr);
-
-        if (success) {
-          cam_initialized[j] = true;
-          calib_opt->calib->intrinsics[j].setFromInit(init_intr);
-          break;
-        }
-      }
-    }
-  }
-
-  // Try perfect pinhole initialization for cameras that are not initalized.
-  for (size_t j = 0; j < vio_dataset->get_num_cams(); j++) {
-    if (!cam_initialized[j]) {
-      std::vector<CalibCornerData *> pinhole_corners;
-      int w = 0;
-      int h = 0;
-
+    for (size_t j = 0; j < vio_dataset->get_num_cams(); j++) {
       for (size_t i = 0; i < vio_dataset->get_image_timestamps().size();
-           i += inc) {
+          i += inc) {
         const int64_t timestamp_ns = vio_dataset->get_image_timestamps()[i];
         const std::vector<basalt::ImageData> &img_vec =
             vio_dataset->get_image_data(timestamp_ns);
 
         TimeCamId tcid(timestamp_ns, j);
 
-        auto it = calib_corners.find(tcid);
-        if (it != calib_corners.end()) {
-          if (it->second.corners.size() > 8) {
-            pinhole_corners.emplace_back(&it->second);
+        if (calib_corners.find(tcid) != calib_corners.end()) {
+          CalibCornerData cid = calib_corners.at(tcid);
+
+          Eigen::Vector4d init_intr;
+
+          bool success = CalibHelper::initializeIntrinsics(
+              cid.corners, cid.corner_ids, calib_pattern, img_vec[j].img->w,
+              img_vec[j].img->h, init_intr);
+
+          if (success) {
+            cam_initialized[j] = true;
+            calib_opt->calib->intrinsics[j].setFromInit(init_intr);
+            break;
           }
         }
-
-        w = img_vec[j].img->w;
-        h = img_vec[j].img->h;
       }
+    }
 
-      BASALT_ASSERT(w > 0 && h > 0);
+    // Try perfect pinhole initialization for cameras that are not initalized.
+    for (size_t j = 0; j < vio_dataset->get_num_cams(); j++) {
+      if (!cam_initialized[j]) {
+        std::vector<CalibCornerData *> pinhole_corners;
+        int w = 0;
+        int h = 0;
 
-      Eigen::Vector4d init_intr;
+        for (size_t i = 0; i < vio_dataset->get_image_timestamps().size();
+            i += inc) {
+          const int64_t timestamp_ns = vio_dataset->get_image_timestamps()[i];
+          const std::vector<basalt::ImageData> &img_vec =
+              vio_dataset->get_image_data(timestamp_ns);
 
-      bool success = CalibHelper::initializeIntrinsicsPinhole(
-          pinhole_corners, calib_pattern, w, h, init_intr);
+          TimeCamId tcid(timestamp_ns, j);
 
-      if (success) {
-        cam_initialized[j] = true;
+          auto it = calib_corners.find(tcid);
+          if (it != calib_corners.end()) {
+            if (it->second.corners.size() > 8) {
+              pinhole_corners.emplace_back(&it->second);
+            }
+          }
 
-        std::cout << "Initialized camera " << j
-                  << " with pinhole model. You should set pinhole model for "
-                     "this camera!"
-                  << std::endl;
-        calib_opt->calib->intrinsics[j].setFromInit(init_intr);
+          w = img_vec[j].img->w;
+          h = img_vec[j].img->h;
+        }
+
+        BASALT_ASSERT(w > 0 && h > 0);
+
+        Eigen::Vector4d init_intr;
+
+        bool success = CalibHelper::initializeIntrinsicsPinhole(
+            pinhole_corners, calib_pattern, w, h, init_intr);
+
+        if (success) {
+          cam_initialized[j] = true;
+
+          std::cout << "Initialized camera " << j
+                    << " with pinhole model. You should set pinhole model for "
+                      "this camera!"
+                    << std::endl;
+          calib_opt->calib->intrinsics[j].setFromInit(init_intr);
+        }
       }
     }
   }
