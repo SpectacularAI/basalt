@@ -208,9 +208,7 @@ void CamImuCalib::computeProjections() {
     int64_t timestamp_corrected_ns =
         timestamp_ns + calib_opt->getCamTimeOffsetNs();
 
-    if (timestamp_corrected_ns < calib_opt->getMinTimeNs() ||
-        timestamp_corrected_ns >= calib_opt->getMaxTimeNs())
-      continue;
+    if (!calib_opt->isValidTimestamp(timestamp_corrected_ns)) continue;
 
     for (size_t i = 0; i < calib_opt->calib->intrinsics.size(); i++) {
       TimeCamId tcid(timestamp_ns, i);
@@ -419,31 +417,32 @@ void CamImuCalib::initOptimization() {
 
   calib_opt->setCalibrationPatternCorners3d(calib_pattern.corner_pos_3d);
 
-  for (size_t i = 0; i < vio_dataset->get_accel_data().size(); i++) {
-    const basalt::AccelData &ad = vio_dataset->get_accel_data()[i];
-    const basalt::GyroData &gd = vio_dataset->get_gyro_data()[i];
-
-    calib_opt->addAccelMeasurement(ad.timestamp_ns, ad.data);
-    calib_opt->addGyroMeasurement(gd.timestamp_ns, gd.data);
-  }
-
   std::set<uint64_t> invalid_timestamps;
   for (const auto &kv : calib_corners) {
     if (kv.second.corner_ids.size() < MIN_CORNERS)
       invalid_timestamps.insert(kv.first.frame_id);
   }
 
+  int64_t min_calib_t = 0, max_calib_t = 0;
+  bool first_calib = true;
   for (const auto &kv : calib_corners) {
-    if (invalid_timestamps.find(kv.first.frame_id) == invalid_timestamps.end())
-      calib_opt->addCalibrationPatternMeasurement(kv.first.frame_id, kv.first.cam_id,
+    int64_t t_ns = kv.first.frame_id;
+    if (invalid_timestamps.find(t_ns) == invalid_timestamps.end()) {
+      calib_opt->addCalibrationPatternMeasurement(t_ns, kv.first.cam_id,
                                          kv.second.corners,
                                          kv.second.corner_ids);
+      if (first_calib) {
+        min_calib_t = t_ns;
+        max_calib_t = t_ns;
+        first_calib = false;
+      } else {
+        min_calib_t = std::min(min_calib_t, t_ns);
+        max_calib_t = std::max(max_calib_t, t_ns);
+      }
+    }
   }
 
-  for (size_t i = 0; i < vio_dataset->get_gt_timestamps().size(); i++) {
-    calib_opt->addMocapMeasurement(vio_dataset->get_gt_timestamps()[i],
-                                   vio_dataset->get_gt_pose_data()[i]);
-  }
+  assert(!first_calib);
 
   bool g_initialized = false;
   Eigen::Vector3d g_a_init;
@@ -455,6 +454,8 @@ void CamImuCalib::initOptimization() {
     const auto cp_it = calib_init_poses.find(tcid);
 
     if (cp_it != calib_init_poses.end()) {
+      if (timestamp_ns < min_calib_t || timestamp_ns > max_calib_t) continue;
+
       Sophus::SE3d T_a_i =
           cp_it->second.T_a_c * calib_opt->getCamT_i_c(0).inverse();
 
@@ -473,6 +474,24 @@ void CamImuCalib::initOptimization() {
         }
       }
     }
+  }
+
+  for (size_t i = 0; i < vio_dataset->get_accel_data().size(); i++) {
+    const basalt::AccelData &ad = vio_dataset->get_accel_data()[i];
+    if (ad.timestamp_ns >= min_calib_t && ad.timestamp_ns <= max_calib_t)
+      calib_opt->addAccelMeasurement(ad.timestamp_ns, ad.data);
+  }
+
+  for (size_t i = 0; i < vio_dataset->get_gyro_data().size(); i++) {
+    const basalt::GyroData &gd = vio_dataset->get_gyro_data()[i];
+    if (gd.timestamp_ns >= min_calib_t && gd.timestamp_ns <= max_calib_t)
+      calib_opt->addGyroMeasurement(gd.timestamp_ns, gd.data);
+  }
+
+  for (size_t i = 0; i < vio_dataset->get_gt_timestamps().size(); i++) {
+    int64_t t_ns = vio_dataset->get_gt_timestamps()[i];
+    if (t_ns >= min_calib_t && t_ns <= max_calib_t)
+      calib_opt->addMocapMeasurement(t_ns, vio_dataset->get_gt_pose_data()[i]);
   }
 
   const int num_samples = 100;
@@ -601,6 +620,7 @@ void CamImuCalib::initMocap() {
   for (size_t i = vio_dataset->get_gt_timestamps().size() / 2;
        i < vio_dataset->get_gt_timestamps().size(); i++) {
     int64_t timestamp_ns = vio_dataset->get_gt_timestamps()[i];
+    if (!calib_opt->isValidTimestamp(timestamp_ns)) continue;
     T_w_moc = calib_opt->getT_w_i(timestamp_ns) *
               calib_opt->mocap_calib->T_i_mark *
               vio_dataset->get_gt_pose_data()[i].inverse();
@@ -953,6 +973,8 @@ void CamImuCalib::recomputeDataLog() {
     const basalt::AccelData &ad = vio_dataset->get_accel_data()[i];
     const basalt::GyroData &gd = vio_dataset->get_gyro_data()[i];
 
+    if (!calib_opt->isValidTimestamp(ad.timestamp_ns)) continue;
+
     Eigen::Vector3d a_sp(0, 0, 0), g_sp(0, 0, 0);
 
     if (calib_opt && calib_opt->calibInitialized() &&
@@ -981,6 +1003,7 @@ void CamImuCalib::recomputeDataLog() {
 
   for (size_t i = 0; i < vio_dataset->get_image_timestamps().size(); i++) {
     int64_t timestamp_ns = vio_dataset->get_image_timestamps()[i];
+    if (!calib_opt->isValidTimestamp(timestamp_ns)) continue;
 
     TimeCamId tcid(timestamp_ns, 0);
     const auto &it = calib_init_poses.find(tcid);
@@ -1016,9 +1039,7 @@ void CamImuCalib::recomputeDataLog() {
 
     Sophus::SE3d pose_sp, pose_mocap;
     if (calib_opt && calib_opt->calibInitialized()) {
-      if (timestamp_ns < calib_opt->getMinTimeNs() ||
-          timestamp_ns > calib_opt->getMaxTimeNs())
-        continue;
+      if (!calib_opt->isValidTimestamp(timestamp_ns)) continue;
 
       pose_sp = calib_opt->getT_w_i(timestamp_ns);
       pose_mocap = calib_opt->getT_w_moc() *

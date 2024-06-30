@@ -223,6 +223,10 @@ class SplineOptimization {
   SE3 getT_mark_i() const { return mocap_calib->T_i_mark.inverse(); }
   void setT_mark_i(const SE3& val) { mocap_calib->T_i_mark = val.inverse(); }
 
+  bool isValidTimestamp(int64_t t_ns) const {
+    return t_ns >= min_time_us && t_ns <= max_time_us;
+  }
+
   Eigen::Vector3d getTransAccelWorld(int64_t t_ns) const {
     return spline.transAccelWorld(t_ns);
   }
@@ -284,9 +288,6 @@ class SplineOptimization {
     calib_corners_measurements.back().corner_id = corner_id;
   }
 
-  Scalar getMinTime() const { return min_time_us * 1e-9; }
-  Scalar getMaxTime() const { return max_time_us * 1e-9; }
-
   int64_t getMinTimeNs() const { return min_time_us; }
   int64_t getMaxTimeNs() const { return max_time_us; }
 
@@ -295,14 +296,15 @@ class SplineOptimization {
 
     if (spline.numKnots() == 0) {
       spline.setStartTimeNs(min_time_us);
-      spline.setKnots(pose_measurements.front().data,
-                      time_interval_us / dt_ns + N + 1);
+      size_t n_knots = time_interval_us / dt_ns + N + 1;
+      std::cout << "N knots " << n_knots << std::endl;
+      spline.setKnots(pose_measurements.front().data, n_knots);
     }
 
     recompute_size();
 
-    //    std::cout << "spline.minTimeNs() " << spline.minTimeNs() << std::endl;
-    //    std::cout << "spline.maxTimeNs() " << spline.maxTimeNs() << std::endl;
+    std::cout << "spline.minTimeNs() " << spline.minTimeNs() << std::endl;
+    std::cout << "spline.maxTimeNs() " << spline.maxTimeNs() << std::endl;
 
     while (!mocap_measurements.empty() &&
            mocap_measurements.front().timestamp_ns <=
