@@ -261,6 +261,25 @@ void CamImuCalib::detectCorners() {
   }
 }
 
+void removeInvalidPoses(CalibInitPoseMap &poses) {
+    auto valid_poses = poses;
+    valid_poses.clear();
+    size_t n_invalid = 0;
+    constexpr double MIN_TRANS = 1e-3;
+    for (const auto &it : poses) {
+      if (it.second.T_a_c.translation().norm() > MIN_TRANS) {
+        valid_poses.emplace(it.first, it.second);
+      } else {
+        n_invalid++;
+      }
+    }
+
+    if (n_invalid > 0)
+      std::cout << "removed " << n_invalid << "/" << poses.size() << " invalid poses" << std::endl;
+
+    poses = valid_poses;
+}
+
 void CamImuCalib::initCamPoses() {
   if (calib_corners.empty()) {
     std::cerr << "No corners detected. Press detect_corners to start corner "
@@ -286,6 +305,8 @@ void CamImuCalib::initCamPoses() {
     CalibHelper::initCamPoses(calib_opt->calib,
                               calib_pattern.corner_pos_3d,
                               this->calib_corners, this->calib_init_poses);
+
+    removeInvalidPoses(this->calib_init_poses);
 
     std::string path = cache_path + cache_dataset_name + "_init_poses.cereal";
     std::ofstream os(path, std::ios::binary);
@@ -462,10 +483,11 @@ void CamImuCalib::initOptimization() {
       calib_opt->addPoseMeasurement(timestamp_ns, T_a_i);
 
       if (!g_initialized) {
-        for (size_t i = 0;
+        for (size_t i = 1;
              i < vio_dataset->get_accel_data().size() && !g_initialized; i++) {
-          const basalt::AccelData &ad = vio_dataset->get_accel_data()[i];
-          if (std::abs(ad.timestamp_ns - timestamp_ns) < 3000000) {
+          const auto &acc = vio_dataset->get_accel_data();
+          const basalt::AccelData &ad = acc[i];
+          if (ad.timestamp_ns > timestamp_ns && acc[i - 1].timestamp_ns <= timestamp_ns) {
             g_a_init = T_a_i.so3() * ad.data;
             g_initialized = true;
             std::cout << "g_a initialized with " << g_a_init.transpose()
@@ -686,6 +708,7 @@ void CamImuCalib::loadDataset() {
 
       calib_init_poses.clear();
       archive(calib_init_poses);
+      removeInvalidPoses(calib_init_poses);
 
       std::cout << "Loaded initial poses from: " << path << std::endl;
     } else {

@@ -297,14 +297,38 @@ class SplineOptimization {
     if (spline.numKnots() == 0) {
       spline.setStartTimeNs(min_time_us);
       size_t n_knots = time_interval_us / dt_ns + N + 1;
-      std::cout << "N knots " << n_knots << std::endl;
-      spline.setKnots(pose_measurements.front().data, n_knots);
+      const auto firstPose = pose_measurements.front().data;
+      spline.setKnots(firstPose, n_knots);
+
+      constexpr double COARSE_DT_NS = 0.5 * 1e9;
+      size_t n_coarse_knots = time_interval_us / COARSE_DT_NS + N + 1;
+
+      if (n_coarse_knots > 2) {
+        // Create a coarser spline with less knots to initialize the full
+        // spline with something relatively smooth.
+        // Otherwise the second derivatives will be literally off the charts.
+        SplineT coarse_spline(COARSE_DT_NS);
+        coarse_spline.setStartTimeNs(min_time_us);
+        coarse_spline.setKnots(firstPose, n_coarse_knots);
+
+        size_t pose_i = 0;
+        for (size_t i = 0; i < n_coarse_knots; i++) {
+          int64_t knot_ts = min_time_us + COARSE_DT_NS * i;
+          while (pose_i < pose_measurements.size() - 1 &&
+              pose_measurements[pose_i + 1].timestamp_ns <= knot_ts) {
+            pose_i++;
+          }
+          coarse_spline.setKnot(pose_measurements.at(pose_i).data, i);
+        }
+
+        for (size_t i = 0; i < n_knots; ++i) {
+          int64_t knot_ts = min_time_us + dt_ns * i;
+          spline.setKnot(coarse_spline.pose(knot_ts), i);
+        }
+      }
     }
 
     recompute_size();
-
-    std::cout << "spline.minTimeNs() " << spline.minTimeNs() << std::endl;
-    std::cout << "spline.maxTimeNs() " << spline.maxTimeNs() << std::endl;
 
     while (!mocap_measurements.empty() &&
            mocap_measurements.front().timestamp_ns <=
