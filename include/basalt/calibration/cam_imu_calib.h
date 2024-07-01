@@ -132,7 +132,7 @@ class CamImuCalib {
 
   bool show_gui;
 
-  const size_t MIN_CORNERS = 15;
+  const size_t MIN_CORNERS = 4;
 
   std::vector<double> imu_noise;
 

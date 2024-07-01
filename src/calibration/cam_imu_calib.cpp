@@ -438,28 +438,22 @@ void CamImuCalib::initOptimization() {
 
   calib_opt->setCalibrationPatternCorners3d(calib_pattern.corner_pos_3d);
 
-  std::set<uint64_t> invalid_timestamps;
-  for (const auto &kv : calib_corners) {
-    if (kv.second.corner_ids.size() < MIN_CORNERS)
-      invalid_timestamps.insert(kv.first.frame_id);
-  }
-
   int64_t min_calib_t = 0, max_calib_t = 0;
   bool first_calib = true;
   for (const auto &kv : calib_corners) {
     int64_t t_ns = kv.first.frame_id;
-    if (invalid_timestamps.find(t_ns) == invalid_timestamps.end()) {
-      calib_opt->addCalibrationPatternMeasurement(t_ns, kv.first.cam_id,
-                                         kv.second.corners,
-                                         kv.second.corner_ids);
-      if (first_calib) {
-        min_calib_t = t_ns;
-        max_calib_t = t_ns;
-        first_calib = false;
-      } else {
-        min_calib_t = std::min(min_calib_t, t_ns);
-        max_calib_t = std::max(max_calib_t, t_ns);
-      }
+    if (kv.second.corner_ids.size() < MIN_CORNERS) continue;
+
+    calib_opt->addCalibrationPatternMeasurement(t_ns, kv.first.cam_id,
+                                        kv.second.corners,
+                                        kv.second.corner_ids);
+    if (first_calib) {
+      min_calib_t = t_ns;
+      max_calib_t = t_ns;
+      first_calib = false;
+    } else {
+      min_calib_t = std::min(min_calib_t, t_ns);
+      max_calib_t = std::max(max_calib_t, t_ns);
     }
   }
 

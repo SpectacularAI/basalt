@@ -328,33 +328,33 @@ struct CustomCalibrationTargetPoint2D {
 // Define a struct for the images
 struct CustomCalibrationTargetFrame {
     int id;
+    int cameraId;
     double time;
     std::vector<CustomCalibrationTargetPoint2D> points2d;
 
     // Make this struct serializable
     template <class Archive>
     void serialize(Archive& archive) {
-        archive(CEREAL_NVP(id), CEREAL_NVP(time), CEREAL_NVP(points2d));
+        archive(CEREAL_NVP(id), CEREAL_NVP(time), CEREAL_NVP(cameraId), CEREAL_NVP(points2d));
     }
 };
 
 struct FrameDataIndex {
-  std::unordered_map<int64_t, int> timeToFrameId;
+  std::map<std::pair<int64_t, int>, int> timeToFrameId;
   std::unordered_map<int, int> numberToFrameId;
 
-  void add(int64_t time, int index) {
-    // TODO: use camIdx
-    if (timeToFrameId.count(time)) {
-      std::cerr << "Duplicate timestamp " << time << " in custom calibration target!" << std::endl;
+  void add(int64_t time, int cameraId, int index) {
+    if (timeToFrameId.count({ time, cameraId })) {
+      std::cerr << "Duplicate timestamp " << time << " (cam " << cameraId << ") in custom calibration target!" << std::endl;
     }
-    timeToFrameId[time] = index;
+    timeToFrameId[{ time, cameraId }] = index;
   }
 
-  int get(int64_t time) const {
-    if (timeToFrameId.count(time)) {
-      return timeToFrameId.at(time);
+  int get(int64_t time, int cameraId) const {
+    auto it = timeToFrameId.find({ time, cameraId });
+    if (it != timeToFrameId.end()) {
+      return it->second;
     }
-
     return -1;
   }
 };
@@ -384,7 +384,7 @@ public:
     ar(cereal::make_nvp("images", frameData));
     for (size_t i = 0; i < frameData.size(); i++) {
       int64_t time = frameData[i].time * 1e9;
-      frameDataIndex.add(time, i);
+      frameDataIndex.add(time, frameData[i].cameraId, i);
     }
     std::cout << "Found " << frameData.size() << " frames" << std::endl;
 
@@ -407,7 +407,7 @@ public:
     ccd_bad.corners.clear();
     ccd_bad.radii.clear();
 
-    int idx = frameDataIndex.get(timestamp_ns);
+    int idx = frameDataIndex.get(timestamp_ns, camIdx);
     if (idx == -1) return;
     const auto &fd = frameData[idx];
 
@@ -472,7 +472,7 @@ public:
     ar(cereal::make_nvp("images", frameData));
     for (size_t i = 0; i < frameData.size(); i++) {
       int64_t time = frameData[i].time * 1e9;
-      frameDataIndex.add(time, i);
+      frameDataIndex.add(time, i, frameData[i].cameraId);
     }
     std::cout << "Found " << frameData.size() << " frames" << std::endl;
   }
@@ -484,7 +484,6 @@ public:
     int camIdx) const final
   {
     (void)img;
-    (void)camIdx;
 
     ccd_good.corner_ids.clear();
     ccd_good.corners.clear();
@@ -494,7 +493,7 @@ public:
     ccd_bad.corners.clear();
     ccd_bad.radii.clear();
 
-    int idx = frameDataIndex.get(timestamp_ns);
+    int idx = frameDataIndex.get(timestamp_ns, camIdx);
     if (idx == -1) return;
     const auto &fd = frameData[idx];
 

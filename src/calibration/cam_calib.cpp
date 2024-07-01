@@ -742,10 +742,6 @@ void CamCalib::initOptimization() {
   calib_opt->setCalibrationPatternCorners3d(calib_pattern.corner_pos_3d);
 
   std::unordered_set<TimeCamId> invalid_frames;
-  for (const auto &kv : calib_corners) {
-    if (kv.second.corner_ids.size() < MIN_CORNERS)
-      invalid_frames.insert(kv.first);
-  }
 
   for (size_t j = 0; j < vio_dataset->get_image_timestamps().size(); ++j) {
     int64_t timestamp_ns = vio_dataset->get_image_timestamps()[j];
@@ -1049,7 +1045,7 @@ void CamCalib::drawImageOverlay(pangolin::View &v, size_t cam_id) {
 
       if (reprojected_corners.find(tcid) != reprojected_corners.end()) {
         if (calib_corners.count(tcid) > 0 &&
-            calib_corners.at(tcid).corner_ids.size() >= MIN_CORNERS) {
+            calib_corners.at(tcid).corner_ids.size() > 0) {
           const auto &rc = reprojected_corners.at(tcid);
 
           for (size_t i = 0; i < rc.corners_proj.size(); i++) {
@@ -1074,7 +1070,7 @@ void CamCalib::drawImageOverlay(pangolin::View &v, size_t cam_id) {
 
       if (reprojected_vignette.find(tcid) != reprojected_vignette.end()) {
         if (calib_corners.count(tcid) > 0 &&
-            calib_corners.at(tcid).corner_ids.size() >= MIN_CORNERS) {
+            calib_corners.at(tcid).corner_ids.size() > 0) {
           const auto &rc = reprojected_vignette.at(tcid);
 
           bool has_errors = false;
