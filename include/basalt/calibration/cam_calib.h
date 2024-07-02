@@ -43,6 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <Eigen/Dense>
 
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <thread>
@@ -142,6 +143,7 @@ class CamCalib {
   //////////////////////
 
   pangolin::Var<int> show_frame;
+  pangolin::Var<std::function<void(void)>> next_frame;
 
   pangolin::Var<bool> show_corners;
   pangolin::Var<bool> show_corners_rejected;

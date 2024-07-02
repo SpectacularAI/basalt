@@ -58,6 +58,10 @@ CamImuCalib::CamImuCalib(const std::string &dataset_path,
       show_gui(show_gui),
       imu_noise(imu_noise),
       show_frame("ui.show_frame", 0, 0, 1500),
+      next_frame("ui.next_frame", [this]() {
+        show_frame = std::min(static_cast<size_t>(show_frame) + 1, vio_dataset->get_image_timestamps().size() - 1);;
+        show_frame.Meta().gui_changed = true;
+      }),
       show_corners("ui.show_corners", true, false, true),
       show_corners_rejected("ui.show_corners_rejected", false, false, true),
       show_init_reproj("ui.show_init_reproj", false, false, true),
