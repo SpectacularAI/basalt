@@ -293,6 +293,7 @@ class SplineOptimization {
 
   void init() {
     int64_t time_interval_us = max_time_us - min_time_us;
+    std::cout << "time interval s: " << (time_interval_us / 1e9) << std::endl;
 
     if (spline.numKnots() == 0) {
       spline.setStartTimeNs(min_time_us);

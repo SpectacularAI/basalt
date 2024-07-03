@@ -83,6 +83,8 @@ CamImuCalib::CamImuCalib(const std::string &dataset_path,
       opt_imu_scale("ui.opt_imu_scale", false, false, true),
       opt_mocap("ui.opt_mocap", false, false, true),
       huber_thresh("ui.huber_thresh", 4.0, 0.1, 10.0),
+      min_opt_frame("ui.min_opt_frame", 0, 0, 1500),
+      max_opt_frame("ui.max_opt_frame", 0, 0, 1500),
       opt_until_convg("ui.opt_until_converge", false, false, true),
       stop_thresh("ui.stop_thresh", 1e-8, 1e-10, 0.01, true) {
   if (show_gui) initGui();
@@ -187,7 +189,8 @@ void CamImuCalib::renderingLoop() {
           show_data.GuiChanged() || show_spline.GuiChanged() ||
           show_pos.GuiChanged() || show_rot_error.GuiChanged() ||
           show_mocap.GuiChanged() || show_mocap_rot_error.GuiChanged() ||
-          show_mocap_rot_vel.GuiChanged()) {
+          show_mocap_rot_vel.GuiChanged() || min_opt_frame.GuiChanged() ||
+          max_opt_frame.GuiChanged()) {
         drawPlots();
       }
     }
@@ -440,13 +443,18 @@ void CamImuCalib::initOptimization() {
     return;
   }
 
+  resetCalibOpt();
   calib_opt->setCalibrationPatternCorners3d(calib_pattern.corner_pos_3d);
+
+  const int64_t limit_max_t = vio_dataset->get_image_timestamps()[static_cast<int>(max_opt_frame)];
+  const int64_t limit_min_t = vio_dataset->get_image_timestamps()[static_cast<int>(min_opt_frame)];
 
   int64_t min_calib_t = 0, max_calib_t = 0;
   bool first_calib = true;
   for (const auto &kv : calib_corners) {
     int64_t t_ns = kv.first.frame_id;
     if (kv.second.corner_ids.size() < MIN_CORNERS) continue;
+    if (t_ns < limit_min_t || t_ns > limit_max_t) continue;
 
     calib_opt->addCalibrationPatternMeasurement(t_ns, kv.first.cam_id,
                                         kv.second.corners,
@@ -532,6 +540,18 @@ void CamImuCalib::initOptimization() {
   recomputeDataLog();
 
   std::cout << "Initialized optimization." << std::endl;
+}
+
+void CamImuCalib::resetCalibOpt() {
+    calib_opt.reset(new SplineOptimization<5, double>);
+
+    calib_opt->loadCalib(cache_path);
+
+    calib_opt->calib->accel_noise_std.setConstant(imu_noise[0]);
+    calib_opt->calib->gyro_noise_std.setConstant(imu_noise[1]);
+    calib_opt->calib->accel_bias_std.setConstant(imu_noise[2]);
+    calib_opt->calib->gyro_bias_std.setConstant(imu_noise[3]);
+    calib_opt->resetMocapCalib();
 }
 
 void CamImuCalib::initMocap() {
@@ -714,26 +734,24 @@ void CamImuCalib::loadDataset() {
     }
   }
 
-  // load calibration if exist
-  {
-    if (!calib_opt) calib_opt.reset(new SplineOptimization<5, double>);
-
-    calib_opt->loadCalib(cache_path);
-
-    calib_opt->calib->accel_noise_std.setConstant(imu_noise[0]);
-    calib_opt->calib->gyro_noise_std.setConstant(imu_noise[1]);
-    calib_opt->calib->accel_bias_std.setConstant(imu_noise[2]);
-    calib_opt->calib->gyro_bias_std.setConstant(imu_noise[3]);
-  }
-  calib_opt->resetMocapCalib();
+  resetCalibOpt();
 
   reprojected_corners.clear();
 
   if (show_gui) {
     show_frame = 0;
 
-    show_frame.Meta().range[1] = vio_dataset->get_image_timestamps().size() - 1;
+    const int n_frames = vio_dataset->get_image_timestamps().size() - 1;
+
+    show_frame.Meta().range[1] = n_frames;
     show_frame.Meta().gui_changed = true;
+
+    min_opt_frame.Meta().range[1] = n_frames;
+    min_opt_frame.Meta().gui_changed = true;
+
+    max_opt_frame.Meta().range[1] = n_frames;
+    max_opt_frame = n_frames;
+    max_opt_frame.Meta().gui_changed = true;
 
     plotter->ClearSeries();
     recomputeDataLog();
@@ -1205,18 +1223,23 @@ void CamImuCalib::drawPlots() {
                        pangolin::Colour(0, 1, 1), "rot vel z", &mocap_data_log);
   }
 
-  size_t frame_id = show_frame;
   double min_time = vio_dataset->get_accel_data().empty()
                         ? vio_dataset->get_image_timestamps()[0] * 1e-9
                         : vio_dataset->get_accel_data()[0].timestamp_ns * 1e-9;
 
-  int64_t timestamp = vio_dataset->get_image_timestamps()[frame_id];
+  int64_t timestamp = vio_dataset->get_image_timestamps()[show_frame];
+  int64_t min_opt_timestamp = vio_dataset->get_image_timestamps()[static_cast<size_t>(min_opt_frame)];
+  int64_t max_opt_timestamp = vio_dataset->get_image_timestamps()[static_cast<size_t>(max_opt_frame)];
+
   if (calib_opt && calib_opt->calibInitialized())
     timestamp += calib_opt->getCamTimeOffsetNs();
 
-  double t = timestamp * 1e-9 - min_time;
-  plotter->AddMarker(pangolin::Marker::Vertical, t, pangolin::Marker::Equal,
+  plotter->AddMarker(pangolin::Marker::Vertical, timestamp * 1e-9 - min_time, pangolin::Marker::Equal,
                      pangolin::Colour::White());
+  plotter->AddMarker(pangolin::Marker::Vertical, min_opt_timestamp * 1e-9 - min_time, pangolin::Marker::Equal,
+                     pangolin::Colour::Red());
+  plotter->AddMarker(pangolin::Marker::Vertical, max_opt_timestamp * 1e-9 - min_time, pangolin::Marker::Equal,
+                     pangolin::Colour::Green());
 }
 
 bool CamImuCalib::hasCorners() const { return !calib_corners.empty(); }

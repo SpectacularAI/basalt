@@ -69,6 +69,8 @@ class CamImuCalib {
 
   void initGui();
 
+  void resetCalibOpt();
+
   void setNumCameras(size_t n);
 
   void renderingLoop();
@@ -169,6 +171,8 @@ class CamImuCalib {
   pangolin::Var<bool> opt_mocap;
 
   pangolin::Var<double> huber_thresh;
+  pangolin::Var<int> min_opt_frame;
+  pangolin::Var<int> max_opt_frame;
 
   pangolin::Var<bool> opt_until_convg;
   pangolin::Var<double> stop_thresh;
