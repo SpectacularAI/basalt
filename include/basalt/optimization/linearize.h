@@ -115,6 +115,7 @@ struct LinearizeBase {
     const Vector3* g = nullptr;
 
     bool opt_intrinsics;
+    bool opt_extrinsic_trans;
 
     // Cam-IMU options
     bool opt_cam_time_offset;

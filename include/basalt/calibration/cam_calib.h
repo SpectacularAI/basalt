@@ -155,6 +155,7 @@ class CamCalib {
   pangolin::Var<double> huber_thresh;
 
   pangolin::Var<bool> opt_intr;
+  pangolin::Var<bool> opt_extrinsic_trans;
 
   pangolin::Var<bool> opt_until_convg;
   pangolin::Var<double> stop_thresh;

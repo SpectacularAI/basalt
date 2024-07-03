@@ -74,6 +74,7 @@ CamCalib::CamCalib(const std::string &dataset_path,
       show_ids("ui.show_ids", false, false, true),
       huber_thresh("ui.huber_thresh", 4.0, 0.1, 10.0),
       opt_intr("ui.opt_intr", true, false, true),
+      opt_extrinsic_trans("ui.opt_extrinsic_trans", true, false, true),
       opt_until_convg("ui.opt_until_converge", false, false, true),
       stop_thresh("ui.stop_thresh", 1e-8, 1e-10, 0.01, true) {
   if (show_gui) initGui();
@@ -632,6 +633,11 @@ void CamCalib::initCamExtrinsics() {
     return;
   }
 
+  if (vio_dataset->get_calib()) {
+    std::cout << "Using initial extrinsics from dataset" << std::endl;
+    return;
+  }
+
   // Camera graph. Stores the edge from i to j with weight w and timestamp. i
   // and j should be sorted;
   std::map<std::pair<size_t, size_t>, std::pair<int, int64_t>> cam_graph;
@@ -867,6 +873,12 @@ void CamCalib::loadDataset() {
 
     show_frame.Meta().range[1] = vio_dataset->get_image_timestamps().size() - 1;
     show_frame.Meta().gui_changed = true;
+
+    if (vio_dataset->get_calib()) {
+      std::cout << "Dataset has initial calibration: disabling extrinsic trans. opt. by default" << std::endl;
+      opt_extrinsic_trans = false;
+      opt_extrinsic_trans.Meta().gui_changed = true;
+    }
   }
 }
 
@@ -898,7 +910,7 @@ bool CamCalib::optimizeWithParam(bool print_info,
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    converged = calib_opt->optimize(opt_intr, huber_thresh, stop_thresh, error,
+    converged = calib_opt->optimize(opt_intr, opt_extrinsic_trans, huber_thresh, stop_thresh, error,
                                     num_points, reprojection_error);
 
     auto finish = std::chrono::high_resolution_clock::now();

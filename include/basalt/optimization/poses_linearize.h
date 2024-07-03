@@ -98,6 +98,9 @@ struct LinearizePosesOpt : public LinearizeBase<Scalar> {
   }
 
   void operator()(const tbb::blocked_range<CalibrationPatternCornersDataIter>& r) {
+    constexpr size_t ROT_SIZE = 3;
+    constexpr size_t ROT_OFFS = 3;
+
     for (const CalibrationPatternCornersData& acd : r) {
       std::visit(
           [&](const auto& cam) {
@@ -143,12 +146,19 @@ struct LinearizePosesOpt : public LinearizeBase<Scalar> {
                                            Adj.transpose() * cph.b_pose_accum);
 
             if (acd.cam_id > 0) {
-              accum.template addH<POSE_SIZE, POSE_SIZE>(
-                  co, po, -cph.H_pose_accum * Adj);
-              accum.template addH<POSE_SIZE, POSE_SIZE>(co, co,
-                                                        cph.H_pose_accum);
-
-              accum.template addB<POSE_SIZE>(co, -cph.b_pose_accum);
+              Matrix6 m = -cph.H_pose_accum * Adj;
+              if (this->common_data.opt_extrinsic_trans) {
+                accum.template addH<POSE_SIZE, POSE_SIZE>(co, po, m);
+                accum.template addH<POSE_SIZE, POSE_SIZE>(co, co, cph.H_pose_accum);
+                accum.template addB<POSE_SIZE>(co, -cph.b_pose_accum);
+              } else {
+                accum.template addH<ROT_SIZE, ROT_SIZE>(co + ROT_OFFS, po + ROT_OFFS,
+                  m.template block<ROT_SIZE, ROT_SIZE>(ROT_OFFS, ROT_OFFS));
+                accum.template addH<ROT_SIZE, ROT_SIZE>(co + ROT_OFFS, co + ROT_OFFS,
+                  cph.H_pose_accum.template block<ROT_SIZE, ROT_SIZE>(ROT_OFFS, ROT_OFFS));
+                accum.template addB<ROT_SIZE>(co + ROT_OFFS,
+                  -cph.b_pose_accum.template segment<ROT_SIZE>(ROT_OFFS));
+              }
             }
 
             if (this->common_data.opt_intrinsics) {

@@ -111,12 +111,13 @@ class PosesOptimization {
   bool initialized() const { return true; }
 
   // Returns true when converged
-  bool optimize(bool opt_intrinsics, double huber_thresh, double stop_thresh,
+  bool optimize(bool opt_intrinsics, bool opt_extrinsic_trans, double huber_thresh, double stop_thresh,
                 double &error, int &num_points, double &reprojection_error) {
     error = 0;
     num_points = 0;
 
     ccd.opt_intrinsics = opt_intrinsics;
+    ccd.opt_extrinsic_trans = opt_extrinsic_trans;
     ccd.huber_thresh = huber_thresh;
 
     LinearizePosesOpt<double, SparseHashAccumulator<double>> lopt(
