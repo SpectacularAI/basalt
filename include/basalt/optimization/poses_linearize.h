@@ -162,16 +162,25 @@ struct LinearizePosesOpt : public LinearizeBase<Scalar> {
             }
 
             if (this->common_data.opt_intrinsics) {
-              accum.template addH<INTRINSICS_SIZE, POSE_SIZE>(
-                  io, po, cph.H_intr_pose_accum * Adj);
+              Eigen::Matrix<double, INTRINSICS_SIZE, INTRINSICS_SIZE> H_intr = cph.H_intr_accum;
+              Eigen::Matrix<double, INTRINSICS_SIZE, 6> H_pose = cph.H_intr_pose_accum;
+              Eigen::Matrix<double, INTRINSICS_SIZE, 1> b = cph.b_intr_accum;
+
+              if (this->common_data.max_intrinsics > 0 && this->common_data.max_intrinsics < INTRINSICS_SIZE) {
+                int nExtra = INTRINSICS_SIZE - this->common_data.max_intrinsics;
+                H_intr.rightCols(nExtra).setZero();
+                H_intr.bottomRows(nExtra).setZero();
+                H_pose.bottomRows(nExtra).setZero();
+                b.tail(nExtra).setZero();
+              }
+
+              accum.template addH<INTRINSICS_SIZE, POSE_SIZE>(io, po, H_pose * Adj);
 
               if (acd.cam_id > 0)
-                accum.template addH<INTRINSICS_SIZE, POSE_SIZE>(
-                    io, co, -cph.H_intr_pose_accum);
+                accum.template addH<INTRINSICS_SIZE, POSE_SIZE>(io, co, -H_pose);
 
-              accum.template addH<INTRINSICS_SIZE, INTRINSICS_SIZE>(
-                  io, io, cph.H_intr_accum);
-              accum.template addB<INTRINSICS_SIZE>(io, cph.b_intr_accum);
+              accum.template addH<INTRINSICS_SIZE, INTRINSICS_SIZE>(io, io, H_intr);
+              accum.template addB<INTRINSICS_SIZE>(io, b);
             }
           },
           this->common_data.calibration->intrinsics[acd.cam_id].variant);

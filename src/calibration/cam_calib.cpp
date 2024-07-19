@@ -75,6 +75,7 @@ CamCalib::CamCalib(const std::string &dataset_path,
       huber_thresh("ui.huber_thresh", 4.0, 0.1, 10.0),
       opt_intr("ui.opt_intr", true, false, true),
       opt_extrinsic_trans("ui.opt_extrinsic_trans", true, false, true),
+      max_intrinsics("ui.max_intrinsics", 0, 0, 1),
       opt_until_convg("ui.opt_until_converge", false, false, true),
       stop_thresh("ui.stop_thresh", 1e-8, 1e-10, 0.01, true) {
   if (show_gui) initGui();
@@ -543,6 +544,22 @@ void CamCalib::initCamIntrinsics() {
     }
   }
 
+  // set max intrinsics
+  max_intrinsics.Meta().range[1] = 1;
+  for (const auto &intr : calib_opt->calib->intrinsics) {
+    const int INTRINSICS_SIZE = intr.getN();
+    max_intrinsics.Meta().range[1] = std::max((int)max_intrinsics.Meta().range[1], INTRINSICS_SIZE);
+    max_intrinsics.Meta().gui_changed = true;
+  }
+
+  // crude way of zeroing extra intrinsics
+  if (max_intrinsics > 0)
+    for (auto &intr : calib_opt->calib->intrinsics) {
+      if (intr.getN() > max_intrinsics) {
+        intr.setFromInit(intr.getParam().head<4>());
+      }
+    }
+
   std::cout << "Done camera intrinsics initialization:" << std::endl;
   for (size_t j = 0; j < vio_dataset->get_num_cams(); j++) {
     std::cout << "Cam " << j << ": "
@@ -910,8 +927,8 @@ bool CamCalib::optimizeWithParam(bool print_info,
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    converged = calib_opt->optimize(opt_intr, opt_extrinsic_trans, huber_thresh, stop_thresh, error,
-                                    num_points, reprojection_error);
+    converged = calib_opt->optimize(opt_intr, opt_extrinsic_trans, huber_thresh, stop_thresh,
+                                    max_intrinsics, error, num_points, reprojection_error);
 
     auto finish = std::chrono::high_resolution_clock::now();
 

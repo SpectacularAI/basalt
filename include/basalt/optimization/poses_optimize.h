@@ -112,13 +112,14 @@ class PosesOptimization {
 
   // Returns true when converged
   bool optimize(bool opt_intrinsics, bool opt_extrinsic_trans, double huber_thresh, double stop_thresh,
-                double &error, int &num_points, double &reprojection_error) {
+                int max_intrinsics, double &error, int &num_points, double &reprojection_error) {
     error = 0;
     num_points = 0;
 
     ccd.opt_intrinsics = opt_intrinsics;
     ccd.opt_extrinsic_trans = opt_extrinsic_trans;
     ccd.huber_thresh = huber_thresh;
+    ccd.max_intrinsics = max_intrinsics;
 
     LinearizePosesOpt<double, SparseHashAccumulator<double>> lopt(
         problem_size, timestam_to_pose, ccd);

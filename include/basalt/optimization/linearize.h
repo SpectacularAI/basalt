@@ -116,6 +116,7 @@ struct LinearizeBase {
 
     bool opt_intrinsics;
     bool opt_extrinsic_trans;
+    int max_intrinsics = 0;
 
     // Cam-IMU options
     bool opt_cam_time_offset;
