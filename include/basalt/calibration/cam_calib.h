@@ -156,6 +156,9 @@ class CamCalib {
 
   pangolin::Var<bool> opt_intr;
   pangolin::Var<bool> opt_extrinsic_trans;
+  // maximum number of instrinsic parameters to optimize (including fx,fy,ppx,ppy)
+  // 0 means unlimited
+  pangolin::Var<int> max_intrinsics;
 
   pangolin::Var<bool> opt_until_convg;
   pangolin::Var<double> stop_thresh;
