@@ -60,6 +60,121 @@ struct AbstractCalibrationPattern {
   virtual std::vector<std::vector<int>> getFocalLengthTestLines() const = 0;
 };
 
+cv::Mat basaltImageToOpenCvMat(const ImageData &img) {
+    const auto &img_raw = *img.img;
+    cv::Mat image(img_raw.h, img_raw.w, CV_8U);
+    uint8_t *dst = image.ptr();
+    const uint16_t *src = img_raw.ptr;
+    for (size_t i = 0; i < img_raw.size(); i++) dst[i] = (src[i] >> 8);
+    return image;
+}
+
+struct CircleGrid : AbstractCalibrationPattern {
+  /* Example asymmetric calibration pattern that has 2 rows and 5 cols.
+   * The lines show "row major" order for clarity.
+   * `pointDistanceMeters` is the distance between "0" and "2".
+   * cv::findCirclesGrid() returns the corners in order 5, 0, 6, 1, 7, 2, …
+   * and this is also used for the "corner_id" order.
+   *
+   *   1   3
+   *  / \ / \
+   * 0   2   4
+   *
+   *   6   8
+   *  / \ / \
+   * 5   7   9
+   *
+   */
+  double pointDistanceMeters;
+  cv::Size size;
+  cv::Ptr<cv::SimpleBlobDetector> detector;
+  cv::CirclesGridFinderParameters parameters;
+
+  CircleGrid(std::istream &is, CalibrationPattern &pattern) {
+    cereal::JSONInputArchive ar(is);
+    int rows;
+    int cols;
+    ar(cereal::make_nvp("rows", rows));
+    ar(cereal::make_nvp("cols", cols));
+    ar(cereal::make_nvp("pointDistanceMeters", pointDistanceMeters));
+    size = cv::Size(rows, cols);
+
+    cv::SimpleBlobDetector::Params blobParams;
+    // There are many more parameters but tuning these seemed to have significant positive effect.
+    blobParams.thresholdStep = 5; // default 10
+    blobParams.minArea = 10; // default 25
+    blobParams.minConvexity = 0.9; // default 0.95
+    blobParams.maxConvexity = 1.; // default "+inf"
+    detector = cv::SimpleBlobDetector::create(blobParams);
+
+    // Using defaults for CirclesGridFinderParameters.
+
+    pattern.corner_pos_3d.resize(cols * rows);
+    pattern.vignette_pos_3d.clear();
+
+    for (int x = 0; x < cols; ++x) {
+      for (int y = 0; y < rows; ++y) {
+        Eigen::Vector4d pos_3d;
+        pos_3d[0] = x * 0.5 * pointDistanceMeters;
+        pos_3d[1] = y * pointDistanceMeters;
+        if (x % 2 == 1) {
+          pos_3d[1] += 0.5 * pointDistanceMeters;
+        }
+        pos_3d[2] = 0;
+        pos_3d[3] = 1;
+        const int corner_id = x * rows + y;
+        pattern.corner_pos_3d[corner_id] = pos_3d;
+      }
+    }
+  }
+
+  void detectCorners(
+    const ImageData &img,
+    CalibCornerData &ccd_good,
+    CalibCornerData &ccd_bad,
+    const int64_t timestamp_ns,
+    int camIdx
+  ) const final {
+    (void)timestamp_ns;
+    (void)camIdx;
+    ccd_good.corner_ids.clear();
+    ccd_good.corners.clear();
+    ccd_good.radii.clear();
+
+    ccd_bad.corner_ids.clear();
+    ccd_bad.corners.clear();
+    ccd_bad.radii.clear();
+    const cv::Mat imgCv0 = basaltImageToOpenCvMat(img);
+
+    // Image processing (invert and brighten).
+    // TODO Make this optional.
+    const cv::Mat imgCv1 = 255 - imgCv0;
+    cv::Mat imgCv;
+    cv::convertScaleAbs(imgCv1, imgCv, 1.2);
+
+    std::vector<cv::Point2f> corners;
+    const int flags = cv::CALIB_CB_ASYMMETRIC_GRID;
+    if (!cv::findCirclesGrid(imgCv, size, corners, flags, detector, parameters)) {
+      return;
+    }
+    assert((int)corners.size() == size.width * size.height);
+
+    constexpr double RADIUS = 2.0; // not sure how this is defined
+    for (int corner_id = 0; corner_id < (int)corners.size(); ++corner_id) {
+      ccd_good.corner_ids.push_back(corner_id);
+      const auto &c = corners.at(corner_id);
+      ccd_good.corners.push_back(Eigen::Vector2d(c.x, c.y));
+      ccd_good.radii.push_back(RADIUS);
+    }
+  }
+
+  std::vector<std::vector<int>> getFocalLengthTestLines() const final {
+    std::cerr << "getFocalLengthTestLines() not implemented on CircleGrid calibration target!" << std::endl;
+    std::vector<std::vector<int>> result;
+    return result;
+  }
+};
+
 struct AprilGrid : AbstractCalibrationPattern {
   int tagCols;        // number of apriltags
   int tagRows;        // number of apriltags
@@ -551,6 +666,8 @@ struct CalibrationPattern::Impl {
       abstractPattern = std::make_unique<ExternalCheckerboard>(is, pattern);
     else if (file_content.find("aprilgrid")  != std::string::npos || file_content.find("tagCols") != std::string::npos)
       abstractPattern = std::make_unique<AprilGrid>(is, pattern);
+    else if (file_content.find("circlegrid")  != std::string::npos)
+      abstractPattern = std::make_unique<CircleGrid>(is, pattern);
     else {
       std::cerr << "Invalid calibration pattern type" << std::endl;
       std::abort();
